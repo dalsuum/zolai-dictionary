@@ -142,13 +142,17 @@ export class DictionaryService {
 
   // ── Ranked search ───────────────────────────────────────────────────────────
   /**
+   * Ranked search — Zolai ↔ English ↔ Myanmar (bidirectional).
+   *
    * Score tiers:
-   *   100 — exact headword match
-   *    75 — headword starts with query
-   *    50 — headword contains query
-   *    30 — English sense contains query as whole word
-   *    20 — Myanmar sense contains query
-   *    10 — English sense contains query anywhere
+   *   100 — exact headword match             "leiba" → leiba
+   *    75 — headword starts with query       "leib"  → leiba
+   *    50 — headword contains query          "eib"   → leiba
+   *    40 — English exam (full verse) word   "debt"  → leiba  ← NEW
+   *    30 — English sense word-boundary      "song"  → La
+   *    20 — Myanmar sense contains query     "အကြ"   → leiba
+   *    15 — English exam contains anywhere   "debt"  → leiba (fallback)
+   *    10 — English sense contains anywhere
    */
   search(query) {
     const q    = normalise(query);
@@ -162,7 +166,7 @@ export class DictionaryService {
         wordBoundaryRe = new RegExp(
           `(?<![a-z])${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z])`
         );
-      } catch { /* invalid regex — skip boundary matching */ }
+      } catch { /* invalid regex — skip */ }
     }
 
     const scores = new Map();
@@ -176,11 +180,23 @@ export class DictionaryService {
       let best = 0;
       for (const s of rows) {
         if (s.wseq === 0) {
-          const ns = normalise(s.sense);
-          if (wordBoundaryRe?.test(ns))   best = Math.max(best, 30);
-          else if (ns.includes(q))        best = Math.max(best, 10);
-        } else if (s.wseq === 1 && s.sense.includes(qRaw)) {
-          best = Math.max(best, 20);
+          const ns   = normalise(s.sense);
+          const exam = normalise(s.exam ?? '');
+
+          // Sense matching
+          if (wordBoundaryRe?.test(ns))    best = Math.max(best, 30);
+          else if (ns.includes(q))         best = Math.max(best, 10);
+
+          // Exam (full verse) matching — enables English→Zolai
+          // e.g. "debt" finds leiba because exam contains "forgave him the debt"
+          if (wordBoundaryRe?.test(exam))  best = Math.max(best, 40);
+          else if (exam.includes(q))       best = Math.max(best, 15);
+
+        } else if (s.wseq === 1) {
+          // Myanmar search — both raw and normalised
+          if (s.sense.includes(qRaw) || normalise(s.sense).includes(q)) {
+            best = Math.max(best, 20);
+          }
         }
       }
       if (best > 0) scores.set(word, best);
