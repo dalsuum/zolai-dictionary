@@ -55,6 +55,37 @@
       margin-top: 6px; flex-wrap: wrap; font-size: 12px;
     }
     .img-actions a { color: var(--accent); }
+    /* Search highlight */
+    mark { background: #ffe08a; color: inherit; border-radius: 2px; padding: 0 1px; }
+    @media (prefers-color-scheme: dark) { mark { background: #7a5c00; } }
+    /* Settings panel */
+    .settings-panel {
+      margin-top: 10px; padding: 10px 12px;
+      background: var(--bg-2); border: 1px solid var(--border);
+      border-radius: var(--r); display: none;
+    }
+    .settings-panel.open { display: block; }
+    .settings-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .settings-label { font-size:12px; color:var(--text-2); white-space:nowrap; }
+    .settings-input { flex:1; min-width:0; padding:6px 10px; font-size:12px;
+      font-family:var(--font-sans); border:1px solid var(--border-2);
+      border-radius:var(--r); background:var(--bg); color:var(--text); outline:none; }
+    .settings-input:focus { border-color:var(--accent); }
+    .settings-hint { font-size:11px; color:var(--text-3); margin-top:6px; }
+    .settings-hint a { color:var(--accent); }
+    .gear-btn { background:none; border:none; cursor:pointer; font-size:16px;
+      color:var(--text-3); padding:2px 6px; border-radius:var(--r);
+      transition:color .15s; }
+    .gear-btn:hover { color:var(--accent); }
+    /* AI context */
+    .ai-section { margin-top: 12px; }
+    .ai-btn-sm { background:none; border:1px solid var(--border-2); border-radius:var(--r);
+      padding:6px 12px; font-size:12px; cursor:pointer; font-family:var(--font-sans);
+      color:var(--text-2); transition:all .15s; display:inline-flex; align-items:center; gap:6px; }
+    .ai-btn-sm:hover { border-color:var(--accent); color:var(--accent); }
+    .ai-context { margin-top:10px; font-size:13px; color:var(--text-2); line-height:1.7;
+      background:var(--bg-2); border-left:2px solid var(--accent);
+      border-radius:0 var(--r) var(--r) 0; padding:10px 14px; }
     .img-search-prompt {
       display: flex; flex-direction: column; align-items: flex-start;
       gap: 8px; padding: 12px; background: var(--bg-2);
@@ -153,10 +184,29 @@ function renderPage() {
           <span class="muted" id="searchCount"></span>
           <div class="toggle-row">
             <label class="toggle" aria-label="Toggle images">
-              <input type="checkbox" id="imgToggle" ${prefs.showImages ? 'checked' : ''} />
+              <input type="checkbox" id="imgToggle" \${prefs.showImages ? 'checked' : ''} />
               <span class="toggle-track"></span>
             </label>
             <span class="toggle-label">Images</span>
+            <button class="gear-btn" id="gearBtn" title="Settings">⚙️</button>
+          </div>
+        </div>
+        <div class="settings-panel" id="settingsPanel">
+          <div class="settings-row">
+            <span class="settings-label">🤖 Gemini API key</span>
+            <input class="settings-input" id="geminiKeyInput" type="password"
+                   placeholder="Paste your free Gemini API key here"
+                   value="\${sanitize(localStorage.getItem('gemini_api_key') || '')}" />
+            <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px"
+                    id="saveKeyBtn">Save</button>
+            <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px"
+                    id="clearKeyBtn">Clear</button>
+          </div>
+          <div class="settings-hint">
+            Get a <strong>free</strong> Gemini key at
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">
+              aistudio.google.com</a> — no credit card needed.
+            Stored only in your browser, never sent to our servers.
           </div>
         </div>
       </div>
@@ -176,6 +226,21 @@ function renderPage() {
 
   renderList();
   renderDetail(null);
+
+  // Settings gear toggle
+  document.getElementById('gearBtn').addEventListener('click', () => {
+    document.getElementById('settingsPanel').classList.toggle('open');
+  });
+  document.getElementById('saveKeyBtn').addEventListener('click', () => {
+    const k = document.getElementById('geminiKeyInput').value.trim();
+    if (k) { localStorage.setItem('gemini_api_key', k); showToast('Gemini key saved'); }
+    document.getElementById('settingsPanel').classList.remove('open');
+  });
+  document.getElementById('clearKeyBtn').addEventListener('click', () => {
+    localStorage.removeItem('gemini_api_key');
+    document.getElementById('geminiKeyInput').value = '';
+    showToast('Gemini key cleared');
+  });
 }
 
 // ── List pane ─────────────────────────────────────────────────────────────────
@@ -229,6 +294,19 @@ function renderList() {
 }
 
 window.jumpPage = pg => { browsePage = pg; renderList(); };
+
+/**
+ * Highlight query matches in text.
+ * Sanitizes FIRST, then wraps matches in <mark> so XSS-safe.
+ */
+function highlight(text, q) {
+  const safe = sanitize(text);
+  if (!q || !q.trim()) return safe;
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  try {
+    return safe.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
+  } catch { return safe; }
+}
 
 function wordCardHTML({ word, senses }) {
   const en  = senses.find(s => s.wseq === 0);
@@ -331,6 +409,10 @@ function renderDetail(word) {
   </div>`;
 
 
+  // Wire AI button if key present
+  const $aiBtn = document.getElementById('aiBtn');
+  if ($aiBtn) $aiBtn.addEventListener('click', () => getGeminiCtx(word, definition));
+
   // Load image asynchronously — does NOT block render
   if (prefs.showImages) loadImage(word, keyword, gUrl);  // keyword may be null for verse-definition words
 }
@@ -363,15 +445,27 @@ const VERSE_STARTERS = new Set([
 function buildImgKeyword(definition) {
   const def = definition.split(' — ')[0].trim();
   const firstWord = def.split(' ')[0].toLowerCase().replace(/[^a-z]/g,'');
+  const isVerse = VERSE_STARTERS.has(firstWord) || def.split(' ').length > 8;
 
-  // Verse fragment detection: starts with function word OR is a long sentence
-  if (VERSE_STARTERS.has(firstWord) || def.split(' ').length > 8) {
-    return null;  // signal to skip Wikipedia
+  if (!isVerse) {
+    // Real definition — extract content words directly
+    const clean = def.split('/')[0].replace(/[^a-zA-Z\s]/g,' ').toLowerCase().trim();
+    const words = clean.split(/\s+/).filter(w => w.length > 2 && !IMG_STOP.has(w));
+    return words.slice(0, 2).join(' ') || null;
   }
 
-  const clean = def.split('/')[0].replace(/[^a-zA-Z\s]/g, ' ').toLowerCase().trim();
-  const words = clean.split(/\s+/).filter(w => w.length > 2 && !IMG_STOP.has(w));
-  return words.slice(0, 2).join(' ') || null;
+  // Verse fragment — try to extract nouns that follow articles (likely content words)
+  // e.g. "And there was a good way off" → "way"
+  //      "The tabernacles of robbers prosper" → "tabernacles robbers"
+  const nouns = [];
+  const articleMatches = def.matchAll(/\b(?:the|a|an|his|her|their|its|of)\s+([a-zA-Z]{4,})/gi);
+  for (const m of articleMatches) {
+    const w = m[1].toLowerCase();
+    if (!IMG_STOP.has(w) && !VERSE_STARTERS.has(w)) nouns.push(w);
+  }
+  if (nouns.length) return nouns.slice(0, 2).join(' ');
+
+  return null;  // truly no useful keyword — show Google Images link
 }
 
 async function loadImage(word, keyword, gUrl) {
@@ -439,6 +533,48 @@ function showToast(msg, type = 'success') {
   $toast.className     = `toast toast--visible toast--${type}`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2800);
+}
+
+// ── Gemini AI context ────────────────────────────────────────────────────────
+const aiCache = {};  // word → context string (session memory)
+let aiLoading = false;
+
+async function getGeminiCtx(word, definition) {
+  const key = localStorage.getItem('gemini_api_key');
+  if (!key) return;
+
+  const $sec = document.getElementById('aiSection');
+  const $btn = document.getElementById('aiBtn');
+
+  if (aiCache[word]) {
+    if ($sec) $sec.innerHTML = `<div class="ai-context">\${sanitize(aiCache[word])}</div>`;
+    return;
+  }
+
+  if ($btn) { $btn.disabled = true; $btn.innerHTML = '<span class="spinner"></span> Loading…'; }
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=\${encodeURIComponent(key)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text:
+            `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin/Zomi) word "\${word}" meaning "\${definition}". Be concise and factual.`
+          }] }],
+          generationConfig: { maxOutputTokens: 150 }
+        })
+      }
+    );
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    aiCache[word] = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No context available.';
+  } catch (err) {
+    aiCache[word] = `Could not load: \${err.message}`;
+  }
+
+  if ($sec) $sec.innerHTML = `<div class="ai-context">\${sanitize(aiCache[word])}</div>`;
 }
 
 boot();
