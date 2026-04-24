@@ -9,88 +9,44 @@
   <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/main.css" />
   <style>
-    /* Loading screen */
-    .boot-screen {
-      display: flex; flex-direction: column; align-items: center;
-      justify-content: center; min-height: 80vh; gap: 1.25rem;
-      text-align: center; padding: 2rem;
-    }
-    .boot-brand { font-family: var(--font-serif); font-size: 36px; color: var(--text); }
-    .boot-brand em { color: var(--accent); font-style: italic; }
-    .boot-status { font-size: 13px; color: var(--text-3); min-height: 20px; }
-    .boot-bar-wrap {
-      width: 220px; height: 4px; background: var(--border);
-      border-radius: 4px; overflow: hidden;
-    }
-    .boot-bar {
-      height: 100%; background: var(--accent);
-      border-radius: 4px; width: 0%;
-      transition: width 0.4s ease;
-    }
-    .boot-error {
-      background: var(--danger-bg); border: 1px solid #e8b0ab;
-      border-radius: var(--r); padding: 14px 18px;
-      color: var(--danger); font-size: 13px; max-width: 340px;
-    }
-    /* Browse pagination */
-    .browse-nav { display:flex; align-items:center; gap:5px; margin-top:10px; flex-wrap:wrap; }
-    .browse-nav button {
-      padding: 3px 8px; font-size: 11px; font-family: var(--font-sans);
-      border: 1px solid var(--border-2); border-radius: var(--r);
-      background: var(--bg); color: var(--text-2); cursor: pointer;
-    }
-    .browse-nav button:hover, .browse-nav button.active {
-      border-color: var(--accent); color: var(--accent);
-    }
-    .browse-nav .page-info { font-size: 11px; color: var(--text-3); margin-left: auto; }
-    /* Image area */
-    .img-area { margin-bottom: 12px; }
-    .img-loading {
-      display: flex; align-items: center; justify-content: center;
-      gap: 8px; height: 72px; border: 1px dashed var(--border-2);
-      border-radius: var(--r); color: var(--text-3); font-size: 12px;
-    }
-    .img-actions {
-      display: flex; align-items: center; gap: 10px;
-      margin-top: 6px; flex-wrap: wrap; font-size: 12px;
-    }
-    .img-actions a { color: var(--accent); }
-    /* Search highlight */
-    mark { background: #ffe08a; color: inherit; border-radius: 2px; padding: 0 1px; }
-    @media (prefers-color-scheme: dark) { mark { background: #7a5c00; } }
-    /* Settings panel */
-    .settings-panel {
-      margin-top: 10px; padding: 10px 12px;
-      background: var(--bg-2); border: 1px solid var(--border);
-      border-radius: var(--r); display: none;
-    }
-    .settings-panel.open { display: block; }
-    .settings-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .settings-label { font-size:12px; color:var(--text-2); white-space:nowrap; }
-    .settings-input { flex:1; min-width:0; padding:6px 10px; font-size:12px;
-      font-family:var(--font-sans); border:1px solid var(--border-2);
-      border-radius:var(--r); background:var(--bg); color:var(--text); outline:none; }
-    .settings-input:focus { border-color:var(--accent); }
-    .settings-hint { font-size:11px; color:var(--text-3); margin-top:6px; }
-    .settings-hint a { color:var(--accent); }
-    .gear-btn { background:none; border:none; cursor:pointer; font-size:16px;
-      color:var(--text-3); padding:2px 6px; border-radius:var(--r);
-      transition:color .15s; }
-    .gear-btn:hover { color:var(--accent); }
-    /* AI context */
-    .ai-section { margin-top: 12px; }
-    .ai-btn-sm { background:none; border:1px solid var(--border-2); border-radius:var(--r);
-      padding:6px 12px; font-size:12px; cursor:pointer; font-family:var(--font-sans);
-      color:var(--text-2); transition:all .15s; display:inline-flex; align-items:center; gap:6px; }
-    .ai-btn-sm:hover { border-color:var(--accent); color:var(--accent); }
-    .ai-context { margin-top:10px; font-size:13px; color:var(--text-2); line-height:1.7;
-      background:var(--bg-2); border-left:2px solid var(--accent);
-      border-radius:0 var(--r) var(--r) 0; padding:10px 14px; }
-    .img-search-prompt {
-      display: flex; flex-direction: column; align-items: flex-start;
-      gap: 8px; padding: 12px; background: var(--bg-2);
-      border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 8px;
-    }
+    .boot-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;gap:1.25rem;text-align:center;padding:2rem}
+    .boot-brand{font-family:var(--font-serif);font-size:36px;color:var(--text)}
+    .boot-brand em{color:var(--accent);font-style:italic}
+    .boot-status{font-size:13px;color:var(--text-3);min-height:20px}
+    .boot-bar-wrap{width:220px;height:4px;background:var(--border);border-radius:4px;overflow:hidden}
+    .boot-bar{height:100%;background:var(--accent);border-radius:4px;width:0%;transition:width 0.4s ease}
+    .boot-error{background:var(--danger-bg);border:1px solid #e8b0ab;border-radius:var(--r);padding:14px 18px;color:var(--danger);font-size:13px;max-width:340px}
+    /* search highlight */
+    mark{background:#ffe08a;color:inherit;border-radius:2px;padding:0 1px}
+    @media(prefers-color-scheme:dark){mark{background:#7a5c00}}
+    /* settings */
+    .settings-panel{margin-top:10px;padding:10px 12px;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r);display:none}
+    .settings-panel.open{display:block}
+    .settings-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .settings-label{font-size:12px;color:var(--text-2);white-space:nowrap}
+    .settings-key-input{flex:1;min-width:0;padding:6px 10px;font-size:12px;font-family:var(--font-sans);border:1px solid var(--border-2);border-radius:var(--r);background:var(--bg);color:var(--text);outline:none}
+    .settings-key-input:focus{border-color:var(--accent)}
+    .settings-hint{font-size:11px;color:var(--text-3);margin-top:6px}
+    .settings-hint a{color:var(--accent)}
+    .gear-btn{background:none;border:none;cursor:pointer;font-size:15px;color:var(--text-3);padding:2px 6px;border-radius:var(--r);transition:color .15s}
+    .gear-btn:hover{color:var(--accent)}
+    /* browse */
+    .browse-nav{display:flex;align-items:center;gap:4px;margin-top:10px;flex-wrap:wrap}
+    .browse-nav button{padding:3px 7px;font-size:11px;font-family:var(--font-sans);border:1px solid var(--border-2);border-radius:var(--r);background:var(--bg);color:var(--text-2);cursor:pointer}
+    .browse-nav button:hover,.browse-nav button.cur{border-color:var(--accent);color:var(--accent)}
+    .browse-nav .page-info{font-size:11px;color:var(--text-3);margin-left:auto}
+    /* image */
+    .img-area{margin-bottom:12px}
+    .img-loading{display:flex;align-items:center;justify-content:center;gap:8px;height:72px;border:1px dashed var(--border-2);border-radius:var(--r);color:var(--text-3);font-size:12px}
+    .img-actions{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap;font-size:12px}
+    .img-actions a{color:var(--accent)}
+    .img-prompt{display:flex;flex-direction:column;gap:8px;padding:12px;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px}
+    /* AI */
+    .ai-section{margin-top:12px}
+    .ai-btn-sm{background:none;border:1px solid var(--border-2);border-radius:var(--r);padding:6px 12px;font-size:12px;cursor:pointer;font-family:var(--font-sans);color:var(--text-2);transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+    .ai-btn-sm:hover{border-color:var(--accent);color:var(--accent)}
+    .ai-btn-sm:disabled{opacity:.5;cursor:default}
+    .ai-context{margin-top:10px;font-size:13px;color:var(--text-2);line-height:1.7;background:var(--bg-2);border-left:2px solid var(--accent);border-radius:0 var(--r) var(--r) 0;padding:10px 14px}
   </style>
 </head>
 <body>
@@ -101,7 +57,6 @@
 </nav>
 
 <main id="app">
-  <!-- Loading screen — replaced by renderPage() on boot -->
   <div class="boot-screen" id="bootScreen">
     <div class="boot-brand">Zo<em>lai</em></div>
     <div class="boot-bar-wrap"><div class="boot-bar" id="bootBar"></div></div>
@@ -117,49 +72,49 @@ import { debounce, sanitize, parseSense, parseExam, truncate } from './app/utils
 
 // ── POS palette ──────────────────────────────────────────────────────────────
 const POS_PAL = {
-  0:{bg:'#E1F5EE',text:'#085041',bd:'#9FE1CB'},
-  1:{bg:'#E6F1FB',text:'#0C447C',bd:'#B5D4F4'},
-  2:{bg:'#FAEEDA',text:'#633806',bd:'#FAC775'},
-  3:{bg:'#FAECE7',text:'#4A1B0C',bd:'#F5C4B3'},
-  4:{bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},
-  5:{bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},
-  6:{bg:'#EEEDFE',text:'#26215C',bd:'#CECBF6'},
-  7:{bg:'#FCEBEB',text:'#501313',bd:'#F7C1C1'},
- 19:{bg:'#EAF3DE',text:'#173404',bd:'#C0DD97'},
+   0:{bg:'#E1F5EE',text:'#085041',bd:'#9FE1CB'},
+   1:{bg:'#E6F1FB',text:'#0C447C',bd:'#B5D4F4'},
+   2:{bg:'#FAEEDA',text:'#633806',bd:'#FAC775'},
+   3:{bg:'#FAECE7',text:'#4A1B0C',bd:'#F5C4B3'},
+   4:{bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},
+   5:{bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},
+   6:{bg:'#EEEDFE',text:'#26215C',bd:'#CECBF6'},
+   7:{bg:'#FCEBEB',text:'#501313',bd:'#F7C1C1'},
+  19:{bg:'#EAF3DE',text:'#173404',bd:'#C0DD97'},
 };
 const pal = id => POS_PAL[id] ?? POS_PAL[0];
 
 // ── State ─────────────────────────────────────────────────────────────────────
-const svc       = new DictionaryService();
-let selected    = null;
-let query       = '';
-let browsePage  = 0;
-let wikiCache   = {};
-const PAGE_SIZE = 80;
+const svc      = new DictionaryService();
+let selected   = null;
+let query      = '';
+let browsePage = 0;
+let wikiCache  = {};
+let aiCache    = {};
+let aiLoading  = {};
+const PAGE_SZ  = 80;
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
 const $app   = document.getElementById('app');
 const $toast = document.getElementById('toast');
 let toastTimer;
 
-// ── Progress helpers ──────────────────────────────────────────────────────────
+// ── Progress ──────────────────────────────────────────────────────────────────
 function setProgress(msg, pct) {
-  const $bar    = document.getElementById('bootBar');
-  const $status = document.getElementById('bootStatus');
-  if ($bar)    $bar.style.width    = pct + '%';
-  if ($status) $status.textContent = msg;
+  const $b = document.getElementById('bootBar');
+  const $s = document.getElementById('bootStatus');
+  if ($b) $b.style.width = pct + '%';
+  if ($s) $s.textContent = msg;
 }
-
 function showBootError(msg) {
-  const $screen = document.getElementById('bootScreen');
-  if (!$screen) return;
-  $screen.innerHTML = `
+  const $s = document.getElementById('bootScreen');
+  if ($s) $s.innerHTML = `
     <div class="boot-brand">Zo<em>lai</em></div>
     <div class="boot-error">${sanitize(msg)}</div>
     <button class="btn btn-primary" onclick="location.reload()">Retry</button>`;
 }
 
-// ── Boot ─────────────────────────────────────────────────────────────────────
+// ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   try {
     await svc.init((msg, pct) => setProgress(msg, pct));
@@ -173,7 +128,8 @@ async function boot() {
 
 // ── Page scaffold ─────────────────────────────────────────────────────────────
 function renderPage() {
-  const prefs = svc.getPrefs();
+  const prefs  = svc.getPrefs();
+  const gemKey = localStorage.getItem('gemini_api_key') || '';
   $app.innerHTML = `
     <div class="container">
       <div class="search-wrap">
@@ -184,7 +140,7 @@ function renderPage() {
           <span class="muted" id="searchCount"></span>
           <div class="toggle-row">
             <label class="toggle" aria-label="Toggle images">
-              <input type="checkbox" id="imgToggle" \${prefs.showImages ? 'checked' : ''} />
+              <input type="checkbox" id="imgToggle" ${prefs.showImages ? 'checked' : ''} />
               <span class="toggle-track"></span>
             </label>
             <span class="toggle-label">Images</span>
@@ -194,19 +150,15 @@ function renderPage() {
         <div class="settings-panel" id="settingsPanel">
           <div class="settings-row">
             <span class="settings-label">🤖 Gemini API key</span>
-            <input class="settings-input" id="geminiKeyInput" type="password"
-                   placeholder="Paste your free Gemini API key here"
-                   value="\${sanitize(localStorage.getItem('gemini_api_key') || '')}" />
-            <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px"
-                    id="saveKeyBtn">Save</button>
-            <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px"
-                    id="clearKeyBtn">Clear</button>
+            <input class="settings-key-input" id="geminiKeyInput" type="password"
+                   placeholder="Paste free Gemini API key…"
+                   value="${sanitize(gemKey)}" autocomplete="off" />
+            <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px" id="saveKeyBtn">Save</button>
+            <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px" id="clearKeyBtn">Clear</button>
           </div>
           <div class="settings-hint">
-            Get a <strong>free</strong> Gemini key at
-            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">
-              aistudio.google.com</a> — no credit card needed.
-            Stored only in your browser, never sent to our servers.
+            Free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a>
+            — no credit card. Stored only in your browser.
           </div>
         </div>
       </div>
@@ -216,78 +168,88 @@ function renderPage() {
       </div>
     </div>`;
 
+  // Search
   document.getElementById('searchInput').addEventListener(
     'input', debounce(e => { query = e.target.value; browsePage = 0; renderList(); }, 200)
   );
+  // Images toggle
   document.getElementById('imgToggle').addEventListener('change', e => {
     svc.setPrefs({ showImages: e.target.checked });
     if (selected) renderDetail(selected);
   });
-
-  renderList();
-  renderDetail(null);
-
-  // Settings gear toggle
-  document.getElementById('gearBtn').addEventListener('click', () => {
-    document.getElementById('settingsPanel').classList.toggle('open');
-  });
+  // Gear / settings
+  document.getElementById('gearBtn').addEventListener('click', () =>
+    document.getElementById('settingsPanel').classList.toggle('open')
+  );
   document.getElementById('saveKeyBtn').addEventListener('click', () => {
     const k = document.getElementById('geminiKeyInput').value.trim();
-    if (k) { localStorage.setItem('gemini_api_key', k); showToast('Gemini key saved'); }
+    if (k) { localStorage.setItem('gemini_api_key', k); showToast('Gemini key saved ✓'); }
     document.getElementById('settingsPanel').classList.remove('open');
+    if (selected) renderDetail(selected); // show AI button if key now set
   });
   document.getElementById('clearKeyBtn').addEventListener('click', () => {
     localStorage.removeItem('gemini_api_key');
     document.getElementById('geminiKeyInput').value = '';
     showToast('Gemini key cleared');
+    if (selected) renderDetail(selected);
   });
+
+  renderList();
+  renderDetail(null);
+}
+
+// ── Highlight ─────────────────────────────────────────────────────────────────
+function hl(text, q) {
+  const safe = sanitize(text ?? '');
+  if (!q || !q.trim()) return safe;
+  try {
+    const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return safe.replace(new RegExp(`(${esc})`, 'gi'), '<mark>$1</mark>');
+  } catch { return safe; }
 }
 
 // ── List pane ─────────────────────────────────────────────────────────────────
 function renderList() {
-  const $list = document.getElementById('listPane');
-  if (!$list) return;
+  const $l = document.getElementById('listPane');
+  if (!$l) return;
+  const q = query.trim();
 
-  if (query.trim()) {
-    const results = svc.search(query);
+  if (q) {
+    const res = svc.search(q);
     document.getElementById('searchCount').textContent =
-      `${results.length} result${results.length !== 1 ? 's' : ''}`;
-
-    if (!results.length) {
-      $list.innerHTML = `<p class="no-results">No results for "<strong>${sanitize(query)}</strong>"</p>`;
+      `${res.length} result${res.length !== 1 ? 's' : ''}`;
+    if (!res.length) {
+      $l.innerHTML = `<p class="no-results">No results for "<strong>${sanitize(q)}</strong>"</p>`;
       return;
     }
-    $list.innerHTML = `<div class="word-list">
-      ${results.slice(0, 200).map(r => wordCardHTML(r)).join('')}
-    </div>`;
+    $l.innerHTML = `<div class="word-list">${res.slice(0,200).map(r => cardHTML(r, q)).join('')}</div>`;
   } else {
-    const all    = svc.allWords();
-    const total  = all.length;
-    const pages  = Math.ceil(total / PAGE_SIZE);
-    const offset = browsePage * PAGE_SIZE;
-    const slice  = all.slice(offset, offset + PAGE_SIZE);
-
+    const all   = svc.allWords();
+    const total = all.length;
+    const pages = Math.ceil(total / PAGE_SZ);
+    const off   = browsePage * PAGE_SZ;
+    const slice = all.slice(off, off + PAGE_SZ);
     document.getElementById('searchCount').textContent = `${total.toLocaleString()} words`;
 
     const alpha = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(ch => {
       const idx = all.findIndex(w => w.word.toUpperCase().startsWith(ch));
       if (idx === -1) return '';
-      const pg = Math.floor(idx / PAGE_SIZE);
-      return `<button onclick="jumpPage(${pg})" ${browsePage===pg?'class="active"':''}>${ch}</button>`;
+      const pg = Math.floor(idx / PAGE_SZ);
+      return `<button onclick="jumpPage(${pg})" class="${browsePage===pg?'cur':''}">${ch}</button>`;
     }).join('');
 
-    $list.innerHTML = `
-      <p class="section-label-sm">Browse — page ${browsePage + 1} of ${pages}</p>
+    $l.innerHTML = `
+      <p class="section-label-sm">Browse — page ${browsePage+1} of ${pages}</p>
       <div class="browse-grid">${slice.map(w => chipHTML(w)).join('')}</div>
       <div class="browse-nav">
         <button ${browsePage===0?'disabled':''} onclick="jumpPage(${browsePage-1})">‹</button>
         ${alpha}
         <button ${browsePage>=pages-1?'disabled':''} onclick="jumpPage(${browsePage+1})">›</button>
-        <span class="page-info">${offset+1}–${Math.min(offset+PAGE_SIZE,total)} of ${total.toLocaleString()}</span>
+        <span class="page-info">${off+1}–${Math.min(off+PAGE_SZ,total)} of ${total.toLocaleString()}</span>
       </div>`;
   }
 
-  $list.querySelectorAll('[data-word]').forEach(el => {
+  $l.querySelectorAll('[data-word]').forEach(el => {
     el.addEventListener('click', () => selectWord(el.dataset.word));
     if (el.dataset.word === selected) el.classList.add('is-active');
   });
@@ -295,46 +257,33 @@ function renderList() {
 
 window.jumpPage = pg => { browsePage = pg; renderList(); };
 
-/**
- * Highlight query matches in text.
- * Sanitizes FIRST, then wraps matches in <mark> so XSS-safe.
- */
-function highlight(text, q) {
-  const safe = sanitize(text);
-  if (!q || !q.trim()) return safe;
-  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  try {
-    return safe.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
-  } catch { return safe; }
-}
-
-function wordCardHTML({ word, senses }) {
+function cardHTML({ word, senses }, q) {
   const en  = senses.find(s => s.wseq === 0);
   const my  = senses.find(s => s.wseq === 1);
   const pos = svc.synset(en?.wrte ?? 0);
   const p   = pal(pos.id);
   const { definition } = parseSense(en?.sense ?? '');
   return `<div class="word-card${selected===word.word?' is-active':''}" data-word="${sanitize(word.word)}">
-    <div class="wc-zolai">${sanitize(word.word)}</div>
-    <div class="wc-en">${sanitize(truncate(definition, 55))}</div>
-    ${my ? `<div class="wc-my">${sanitize(truncate(my.sense, 45))}</div>` : ''}
+    <div class="wc-zolai">${hl(word.word, q)}</div>
+    <div class="wc-en">${hl(truncate(definition, 55), q)}</div>
+    ${my ? `<div class="wc-my">${hl(truncate(my.sense, 45), q)}</div>` : ''}
     <div class="wc-foot"><span class="badge" style="background:${p.bg};color:${p.text};border-color:${p.bd}">${sanitize(pos.name)}</span></div>
   </div>`;
 }
 
-function chipHTML(word) {
-  const senses = svc.sensesFor(word.word);
+function chipHTML(w) {
+  const senses = svc.sensesFor(w.word);
   const en = senses.find(s => s.wseq === 0);
   const my = senses.find(s => s.wseq === 1);
   const { definition } = parseSense(en?.sense ?? '');
-  return `<div class="chip${selected===word.word?' is-active':''}" data-word="${sanitize(word.word)}">
-    <span class="chip-z">${sanitize(word.word)}</span>
+  return `<div class="chip${selected===w.word?' is-active':''}" data-word="${sanitize(w.word)}">
+    <span class="chip-z">${sanitize(w.word)}</span>
     <span class="chip-e">${sanitize(truncate(definition, 22))}</span>
     ${my ? `<span class="chip-m">${sanitize(truncate(my.sense, 20))}</span>` : ''}
   </div>`;
 }
 
-// ── Detail pane (synchronous render + async image fill) ───────────────────────
+// ── Detail pane ───────────────────────────────────────────────────────────────
 function renderDetail(word) {
   const $d = document.getElementById('detailPane');
   if (!$d) return;
@@ -350,30 +299,30 @@ function renderDetail(word) {
   const senses = svc.sensesFor(word);
   const en     = senses.find(s => s.wseq === 0);
   const my     = senses.find(s => s.wseq === 1);
-  if (!en) {
-    $d.innerHTML = `<div class="detail"><p class="no-results">No entry found for "${sanitize(word)}".</p></div>`;
-    return;
-  }
+  if (!en) { $d.innerHTML = `<div class="detail"><p class="no-results">No entry found.</p></div>`; return; }
 
   const pos   = svc.synset(en.wrte);
   const p     = pal(pos.id);
   const { definition, notes } = parseSense(en.sense);
   const { zolai: exZ, translation: exT } = parseExam(en.exam);
   const prefs = svc.getPrefs();
+  const hasKey = !!localStorage.getItem('gemini_api_key');
 
-
-  // Build search links
+  // Image keyword — extract from definition, fallback to word
   const keyword = buildImgKeyword(definition);
-  const gUrl    = `https://www.google.com/search?udm=2&q=${encodeURIComponent(keyword + ' ' + word + ' Zomi Tedim')}`;
+  // Google Images search using best available term
+  const searchTerm = keyword || definition.split(' ').slice(0,3).join(' ') || word;
+  const gUrl = `https://www.google.com/search?udm=2&q=${encodeURIComponent(searchTerm + ' ' + word + ' Zomi Tedim Myanmar')}`;
 
-  // Render synchronously — no awaits blocking the UI
   $d.innerHTML = `<div class="detail">
 
     ${prefs.showImages ? `
     <div class="img-area" id="imgArea">
       <div class="img-loading">
         <span class="spinner"></span>
-        <span style="font-size:12px;color:var(--text-3)">${keyword ? `Searching for "${sanitize(keyword)}"…` : 'Finding image…'}</span>
+        <span style="font-size:12px;color:var(--text-3)">
+          ${keyword ? `Searching image for &ldquo;${sanitize(keyword)}&rdquo;&hellip;` : 'Looking for image&hellip;'}
+        </span>
       </div>
     </div>` : ''}
 
@@ -405,31 +354,36 @@ function renderDetail(word) {
       ${exT ? `<p class="example-trans">${sanitize(exT)}</p>` : ''}
     </div>` : ''}
 
+    ${hasKey ? `<div class="ai-section" id="aiSection">
+      ${aiCache[word]
+        ? `<div class="ai-context">${sanitize(aiCache[word])}</div>`
+        : `<button class="ai-btn-sm" id="aiBtn">✦ AI cultural context</button>`}
+    </div>` : ''}
 
   </div>`;
 
+  // Wire AI button
+  document.getElementById('aiBtn')?.addEventListener('click', () => getGeminiCtx(word, definition));
 
-  // Wire AI button if key present
-  const $aiBtn = document.getElementById('aiBtn');
-  if ($aiBtn) $aiBtn.addEventListener('click', () => getGeminiCtx(word, definition));
-
-  // Load image asynchronously — does NOT block render
-  if (prefs.showImages) loadImage(word, keyword, gUrl);  // keyword may be null for verse-definition words
+  // Load image async (non-blocking)
+  if (prefs.showImages) loadImage(word, keyword, gUrl);
 }
 
 // ── Image helpers ─────────────────────────────────────────────────────────────
 const IMG_STOP = new Set([
-  'and','the','a','an','he','she','it','to','of','in','is','was','that','his',
-  'her','their','our','its','be','been','have','had','do','did','does','with',
-  'for','on','at','by','from','or','but','not','no','so','let','unto','them',
-  'him','up','out','down','shall','will','may','also','said','came','went',
-  'come','go','sat','lay','give','gave','take','took','make','made','see','saw',
-  'know','say','tell','told','call','primary','general','common','used','refers',
-  'describes','expresses','context','term','word','freq','bible','source','book'
+  'and','the','for','but','in','now','of','he','she','they','his','her',
+  'it','then','so','thus','when','if','as','that','a','an','all','there',
+  'behold','therefore','both','every','each','thou','thy','thee','ye',
+  'unto','after','before','until','because','since','though','from',
+  'with','by','at','upon','through','against','among','between','neither',
+  'nor','let','shall','will','may','said','came','went','who','which','was',
+  'been','have','had','does','did','not','also','him','them','our','its',
+  'their','out','down','up','can','are','nor','but','yet','too','give',
+  'gave','take','took','make','made','see','saw','know','say','tell','told',
+  'call','begin','began','primary','general','common','used','refers',
+  'describes','expresses','context','term','word','freq','bible','source'
 ]);
-
-// Words that start a Bible verse, not a dictionary definition
-const VERSE_STARTERS = new Set([
+const VERSE_START = new Set([
   'and','the','for','but','in','now','of','he','she','they','his','her',
   'it','then','so','thus','when','if','as','that','a','an','all','there',
   'behold','therefore','both','every','each','thou','thy','thee','ye',
@@ -437,131 +391,103 @@ const VERSE_STARTERS = new Set([
   'with','by','at','upon','through','against','among','between','neither','nor'
 ]);
 
-/**
- * Extract image search keyword from an English definition.
- * Returns null if the definition is a Bible verse fragment (not a real definition).
- * In that case, skip Wikipedia and show Google Images directly.
- */
 function buildImgKeyword(definition) {
-  const def = definition.split(' — ')[0].trim();
-  const firstWord = def.split(' ')[0].toLowerCase().replace(/[^a-z]/g,'');
-  const isVerse = VERSE_STARTERS.has(firstWord) || def.split(' ').length > 8;
+  const def      = definition.split(' — ')[0].trim();
+  const firstWd  = def.split(' ')[0].toLowerCase().replace(/[^a-z]/g, '');
+  const isVerse  = VERSE_START.has(firstWd) || def.split(' ').length > 8;
 
   if (!isVerse) {
-    // Real definition — extract content words directly
-    const clean = def.split('/')[0].replace(/[^a-zA-Z\s]/g,' ').toLowerCase().trim();
+    // Real definition: "House / home", "To love", "God"
+    const clean = def.split('/')[0].replace(/[^a-zA-Z\s]/g, ' ').toLowerCase().trim();
     const words = clean.split(/\s+/).filter(w => w.length > 2 && !IMG_STOP.has(w));
     return words.slice(0, 2).join(' ') || null;
   }
 
-  // Verse fragment — try to extract nouns that follow articles (likely content words)
-  // e.g. "And there was a good way off" → "way"
-  //      "The tabernacles of robbers prosper" → "tabernacles robbers"
+  // Verse fragment: try extracting nouns after articles
   const nouns = [];
-  const articleMatches = def.matchAll(/\b(?:the|a|an|his|her|their|its|of)\s+([a-zA-Z]{4,})/gi);
-  for (const m of articleMatches) {
+  for (const m of def.matchAll(/\b(?:the|a|an|his|her|their|its|of)\s+([a-zA-Z]{4,})/gi)) {
     const w = m[1].toLowerCase();
-    if (!IMG_STOP.has(w) && !VERSE_STARTERS.has(w)) nouns.push(w);
+    if (!IMG_STOP.has(w) && !VERSE_START.has(w)) nouns.push(w);
   }
-  if (nouns.length) return nouns.slice(0, 2).join(' ');
-
-  return null;  // truly no useful keyword — show Google Images link
+  return nouns.length ? nouns.slice(0, 2).join(' ') : null;
 }
 
 async function loadImage(word, keyword, gUrl) {
-  // No keyword = Bible verse definition; skip Wikipedia, show Google Images directly
-  if (!keyword) {
-    fillImageArea(word, null, null, gUrl);
-    return;
+  const cacheKey = keyword || '__nkw__';
+
+  if (wikiCache[cacheKey] !== undefined) {
+    fillImage(word, keyword, wikiCache[cacheKey], gUrl); return;
   }
-  // Check cache first
-  if (wikiCache[keyword] !== undefined) {
-    fillImageArea(word, keyword, wikiCache[keyword], gUrl);
-    return;
+
+  if (keyword) {
+    try {
+      const url  = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(keyword)}&prop=pageimages&format=json&pithumbsize=640&origin=*`;
+      const data = await (await fetch(url)).json();
+      const page = Object.values(data?.query?.pages ?? {})[0];
+      wikiCache[cacheKey] = page?.thumbnail?.source ?? null;
+    } catch { wikiCache[cacheKey] = null; }
+  } else {
+    wikiCache[cacheKey] = null;
   }
-  try {
-    const url  = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(keyword)}&prop=pageimages&format=json&pithumbsize=640&origin=*`;
-    const res  = await fetch(url);
-    const data = await res.json();
-    const page = Object.values(data?.query?.pages ?? {})[0];
-    wikiCache[keyword] = page?.thumbnail?.source ?? null;
-  } catch {
-    wikiCache[keyword] = null;
-  }
-  fillImageArea(word, keyword, wikiCache[keyword], gUrl);
+
+  fillImage(word, keyword, wikiCache[cacheKey], gUrl);
 }
 
-function fillImageArea(word, keyword, src, gUrl) {
-  // Only update if user is still viewing the same word
+function fillImage(word, keyword, src, gUrl) {
   if (selected !== word) return;
-  const $area = document.getElementById('imgArea');
-  if (!$area) return;
+  const $a = document.getElementById('imgArea');
+  if (!$a) return;
 
   if (src) {
-    $area.innerHTML = `
-      <img src="${sanitize(src)}" alt="${sanitize(keyword)}"
+    $a.innerHTML = `
+      <img src="${sanitize(src)}" alt="${sanitize(keyword || word)}"
            style="width:100%;height:160px;object-fit:cover;border-radius:var(--r);display:block"
-           onerror="this.parentElement.innerHTML='<div class=img-search-prompt><span style=font-size:13px;color:var(--text-2)>No image available</span><a class=btn href=${sanitize(gUrl)} target=_blank rel=noopener style=font-size:12px>🔍 Google Images</a></div>'" />
+           onerror="this.parentElement.innerHTML='<div class=img-prompt><span style=font-size:13px>No image available</span><a class=btn href=${sanitize(gUrl)} target=_blank rel=noopener style=font-size:12px>🔍 Google Images</a></div>'" />
       <div class="img-actions">
-        <span style="font-size:11px;color:var(--text-3)">📷 Wikipedia · "${sanitize(keyword)}"</span>
-        <a href="${gUrl}" target="_blank" rel="noopener" style="margin-left:auto">More images</a>
+        <span style="color:var(--text-3)">📷 Wikipedia · ${sanitize(keyword || '')}</span>
+        <a href="${sanitize(gUrl)}" target="_blank" rel="noopener" style="margin-left:auto">More images</a>
       </div>`;
   } else {
-    $area.innerHTML = `
-      <div class="img-search-prompt">
-        <span style="font-size:13px;color:var(--text-2)">Image search: <strong>${sanitize(keyword)}</strong></span>
-        <a class="btn btn-secondary" href="${gUrl}" target="_blank" rel="noopener"
+    $a.innerHTML = `
+      <div class="img-prompt">
+        <span style="font-size:13px;color:var(--text-2)">
+          Image search: <strong>${sanitize(keyword || word)}</strong>
+        </span>
+        <a class="btn btn-secondary" href="${sanitize(gUrl)}" target="_blank" rel="noopener"
            style="font-size:12px;padding:6px 14px">🔍 Search Google Images</a>
       </div>`;
   }
 }
 
-// ── Interactions ───────────────────────────────────────────────────────────
+// ── Select word ───────────────────────────────────────────────────────────────
 function selectWord(word) {
   selected = word;
-  // Update active state on cards without re-rendering the whole list
   document.querySelectorAll('[data-word]').forEach(el =>
     el.classList.toggle('is-active', el.dataset.word === word)
   );
   renderDetail(word);
 }
 
-
-
-function showToast(msg, type = 'success') {
-  $toast.textContent   = msg;
-  $toast.className     = `toast toast--visible toast--${type}`;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2800);
-}
-
-// ── Gemini AI context ────────────────────────────────────────────────────────
-const aiCache = {};  // word → context string (session memory)
-let aiLoading = false;
-
+// ── Gemini AI ────────────────────────────────────────────────────────────────
 async function getGeminiCtx(word, definition) {
   const key = localStorage.getItem('gemini_api_key');
-  if (!key) return;
+  if (!key) { showToast('Add your Gemini key in ⚙️ Settings first', 'error'); return; }
+  if (aiLoading[word]) return;
 
-  const $sec = document.getElementById('aiSection');
+  aiLoading[word] = true;
   const $btn = document.getElementById('aiBtn');
-
-  if (aiCache[word]) {
-    if ($sec) $sec.innerHTML = `<div class="ai-context">\${sanitize(aiCache[word])}</div>`;
-    return;
-  }
-
+  const $sec = document.getElementById('aiSection');
   if ($btn) { $btn.disabled = true; $btn.innerHTML = '<span class="spinner"></span> Loading…'; }
 
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=\${encodeURIComponent(key)}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`,
       {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text:
-            `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin/Zomi) word "\${word}" meaning "\${definition}". Be concise and factual.`
+            `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin / Zomi) word "${word}" meaning "${definition}". Be concise and factual.`
           }] }],
           generationConfig: { maxOutputTokens: 150 }
         })
@@ -569,12 +495,21 @@ async function getGeminiCtx(word, definition) {
     );
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    aiCache[word] = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No context available.';
+    aiCache[word] = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? 'No context returned.';
   } catch (err) {
-    aiCache[word] = `Could not load: \${err.message}`;
+    aiCache[word] = `Could not load context: ${err.message}`;
   }
 
-  if ($sec) $sec.innerHTML = `<div class="ai-context">\${sanitize(aiCache[word])}</div>`;
+  aiLoading[word] = false;
+  if ($sec) $sec.innerHTML = `<div class="ai-context">${sanitize(aiCache[word])}</div>`;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'success') {
+  $toast.textContent = msg;
+  $toast.className   = `toast toast--visible toast--${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2800);
 }
 
 boot();
