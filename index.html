@@ -102,7 +102,6 @@ const pal = id => POS_PAL[id] ?? POS_PAL[0];
 const svc       = new DictionaryService();
 let selected    = null;
 let query       = '';
-let aiLoading   = false;
 let browsePage  = 0;
 let wikiCache   = {};
 const PAGE_SIZE = 80;
@@ -283,7 +282,7 @@ function renderDetail(word) {
   const { definition, notes } = parseSense(en.sense);
   const { zolai: exZ, translation: exT } = parseExam(en.exam);
   const prefs = svc.getPrefs();
-  const ctx   = svc.getAICache()[word];
+
 
   // Build search links
   const keyword = buildImgKeyword(definition);
@@ -296,7 +295,7 @@ function renderDetail(word) {
     <div class="img-area" id="imgArea">
       <div class="img-loading">
         <span class="spinner"></span>
-        <span>Searching for "${sanitize(keyword)}"…</span>
+        <span style="font-size:12px;color:var(--text-3)">${keyword ? `Searching for "${sanitize(keyword)}"…` : 'Finding image…'}</span>
       </div>
     </div>` : ''}
 
@@ -328,20 +327,12 @@ function renderDetail(word) {
       ${exT ? `<p class="example-trans">${sanitize(exT)}</p>` : ''}
     </div>` : ''}
 
-    <div class="section">
-      <button class="ai-btn" id="aiBtn">
-        ${aiLoading ? '<span class="spinner"></span> Loading…'
-          : ctx       ? '↻ Refresh context'
-          : '✦ AI cultural context'}
-      </button>
-      ${ctx ? `<div class="ai-context">${sanitize(ctx)}</div>` : ''}
-    </div>
+
   </div>`;
 
-  document.getElementById('aiBtn')?.addEventListener('click', () => getAICtx(word));
 
   // Load image asynchronously — does NOT block render
-  if (prefs.showImages) loadImage(word, keyword, gUrl);
+  if (prefs.showImages) loadImage(word, keyword, gUrl);  // keyword may be null for verse-definition words
 }
 
 // ── Image helpers ─────────────────────────────────────────────────────────────
@@ -355,14 +346,40 @@ const IMG_STOP = new Set([
   'describes','expresses','context','term','word','freq','bible','source','book'
 ]);
 
+// Words that start a Bible verse, not a dictionary definition
+const VERSE_STARTERS = new Set([
+  'and','the','for','but','in','now','of','he','she','they','his','her',
+  'it','then','so','thus','when','if','as','that','a','an','all','there',
+  'behold','therefore','both','every','each','thou','thy','thee','ye',
+  'unto','after','before','until','because','since','though','from',
+  'with','by','at','upon','through','against','among','between','neither','nor'
+]);
+
+/**
+ * Extract image search keyword from an English definition.
+ * Returns null if the definition is a Bible verse fragment (not a real definition).
+ * In that case, skip Wikipedia and show Google Images directly.
+ */
 function buildImgKeyword(definition) {
-  const clean = definition.split(' — ')[0].split('/')[0]
-    .replace(/[^a-zA-Z\s]/g, ' ').toLowerCase().trim();
+  const def = definition.split(' — ')[0].trim();
+  const firstWord = def.split(' ')[0].toLowerCase().replace(/[^a-z]/g,'');
+
+  // Verse fragment detection: starts with function word OR is a long sentence
+  if (VERSE_STARTERS.has(firstWord) || def.split(' ').length > 8) {
+    return null;  // signal to skip Wikipedia
+  }
+
+  const clean = def.split('/')[0].replace(/[^a-zA-Z\s]/g, ' ').toLowerCase().trim();
   const words = clean.split(/\s+/).filter(w => w.length > 2 && !IMG_STOP.has(w));
-  return words.slice(0, 2).join(' ') || 'Myanmar';
+  return words.slice(0, 2).join(' ') || null;
 }
 
 async function loadImage(word, keyword, gUrl) {
+  // No keyword = Bible verse definition; skip Wikipedia, show Google Images directly
+  if (!keyword) {
+    fillImageArea(word, null, null, gUrl);
+    return;
+  }
   // Check cache first
   if (wikiCache[keyword] !== undefined) {
     fillImageArea(word, keyword, wikiCache[keyword], gUrl);
@@ -405,7 +422,7 @@ function fillImageArea(word, keyword, src, gUrl) {
   }
 }
 
-// ── Interactions ──────────────────────────────────────────────────────────────
+// ── Interactions ───────────────────────────────────────────────────────────
 function selectWord(word) {
   selected = word;
   // Update active state on cards without re-rendering the whole list
@@ -415,33 +432,7 @@ function selectWord(word) {
   renderDetail(word);
 }
 
-async function getAICtx(word) {
-  if (aiLoading) return;
-  aiLoading = true;
-  renderDetail(word);
-  const cache = svc.getAICache();
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:  'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model:      'claude-sonnet-4-20250514',
-        max_tokens: 300,
-        messages:   [{ role:'user', content:`In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin/Zomi) word "${word}". Be concise.` }],
-      }),
-    });
-    const data  = await res.json();
-    cache[word] = data?.content?.[0]?.text ?? 'No context available.';
-  } catch (err) {
-    cache[word] = `Context unavailable: ${err.message}`;
-  }
-  svc.setAICache(cache);
-  aiLoading = false;
-  renderDetail(word);
-}
+
 
 function showToast(msg, type = 'success') {
   $toast.textContent   = msg;

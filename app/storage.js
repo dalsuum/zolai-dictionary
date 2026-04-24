@@ -13,7 +13,7 @@
 
 const KEYS = {
   PREFS:    'zolai_prefs_v3',     // bumped from v1 → forces re-init (BUG 6)
-  AI_CACHE: 'zolai_ai_cache_v3',
+
 };
 
 export class LocalStorageAdapter {

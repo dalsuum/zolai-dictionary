@@ -221,6 +221,6 @@ export class DictionaryService {
   // ── Prefs & AI cache ────────────────────────────────────────────────────────
   getPrefs()       { return this._storage.get(KEYS.PREFS)    ?? {showImages:true}; }
   setPrefs(prefs)  { this._storage.set(KEYS.PREFS, {...this.getPrefs(),...prefs}); }
-  getAICache()     { return this._storage.get(KEYS.AI_CACHE) ?? {}; }
-  setAICache(c)    { this._storage.set(KEYS.AI_CACHE, c); }
+
+
 }
