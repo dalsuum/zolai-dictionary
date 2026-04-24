@@ -13,7 +13,7 @@ A free, open-source trilingual dictionary for the **Zolai (Tedim Chin / Zomi)** 
 
 ## Overview
 
-The Zolai language (also called Tedim Chin) is spoken by the Zomi people of the Chin Hills (Myanmar/India). This dictionary aims to preserve and make accessible the language by combining a curated grammar seed with vocabulary extracted from the full Lai Siangtho Bible corpus (30,758 verses).
+The Zolai language (also called Tedim Chin) is spoken by the Zomi people of the Chin Hills (Myanmar). This dictionary aims to preserve and make accessible the language by combining a curated grammar seed with vocabulary extracted from the full Lai Siangtho Bible corpus (30,758 verses).
 
 ---
 
