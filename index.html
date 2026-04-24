@@ -15,12 +15,15 @@
     .browse-nav button:hover,.browse-nav button.active{border-color:var(--accent);color:var(--accent)}
     .browse-nav .page-info{font-size:12px;color:var(--text-3);margin-left:auto}
     /* Image area */
-    .img-area{position:relative;margin-bottom:12px}
-    .img-area img{width:100%;height:160px;object-fit:cover;border-radius:var(--r);display:block}
-    .img-area .img-actions{display:flex;gap:10px;margin-top:6px;font-size:12px}
-    .img-area .img-actions a{color:var(--accent)}
-    .img-error{display:flex;align-items:center;justify-content:center;height:120px;border:1px dashed var(--border-2);border-radius:var(--r);color:var(--text-3);font-size:13px;gap:8px;flex-direction:column;margin-bottom:12px}
-    .img-error a{color:var(--accent);font-size:12px}
+    .img-area{margin-bottom:12px}
+    .img-loading{display:flex;align-items:center;justify-content:center;gap:8px;
+      height:80px;border:1px dashed var(--border-2);border-radius:var(--r);
+      color:var(--text-3)}
+    .img-search-prompt{display:flex;flex-direction:column;align-items:flex-start;
+      gap:8px;padding:14px;background:var(--bg-2);border:1px solid var(--border);
+      border-radius:var(--r);margin-bottom:8px}
+    .img-actions{display:flex;align-items:center;gap:10px;margin-top:6px;
+      flex-wrap:wrap}
   </style>
 </head>
 <body>
@@ -173,10 +176,73 @@ function renderList() {
   });
 }
 
+// ── Image keyword extraction ──────────────────────────────────────────────────
+// WHY extract keywords instead of using the Zolai word directly?
+//   "Topa", "mite", "khempeuh" mean nothing to any image service.
+//   The English definition contains the meaning — we extract 1-2 content words.
+const IMG_STOP = new Set([
+  'and','the','a','an','he','she','it','to','of','in','is','was','that',
+  'his','her','their','our','its','be','been','have','had','do','did',
+  'does','with','for','on','at','by','from','or','but','not','no','so',
+  'let','there','they','we','you','i','me','my','your','this','which',
+  'who','what','all','one','two','three','unto','them','him','up','out',
+  'down','shall','will','may','also','said','came','went','come','go',
+  'sat','lay','give','gave','take','took','make','made','see','saw',
+  'know','say','tell','told','call','begin','began','primary','general',
+  'common','used','refers','describes','expresses','context','term','word',
+  'see','note','freq','bible','source','book','verse','chapter'
+]);
+
+/**
+ * Extract 1-2 clean English content words from a definition string.
+ * Used as the Wikipedia / image search keyword.
+ * @param {string} definition  English sense text
+ * @returns {string}           e.g. "house" | "sacred cattle" | "morning"
+ */
+function buildImageKeyword(definition) {
+  const clean = definition
+    .split(' — ')[0]          // drop notes after em-dash
+    .split('/')[0]            // take first option before slash
+    .replace(/[^a-zA-Z\s]/g, ' ')
+    .toLowerCase()
+    .trim();
+
+  const words = clean.split(/\s+/)
+    .filter(w => w.length > 2 && !IMG_STOP.has(w));
+
+  return words.slice(0, 2).join(' ') || 'culture';
+}
+
+// Cache for Wikipedia images: keyword → url|null
+const wikiImageCache = {};
+
+/**
+ * Fetch the best thumbnail from Wikipedia for a keyword.
+ * Free, no API key, CORS-enabled via origin=*.
+ * Returns null if no image found.
+ * @param {string} keyword
+ * @returns {Promise<string|null>}
+ */
+async function fetchWikiImage(keyword) {
+  if (keyword in wikiImageCache) return wikiImageCache[keyword];
+  try {
+    const url = `https://en.wikipedia.org/w/api.php?` +
+      `action=query&titles=${encodeURIComponent(keyword)}&prop=pageimages` +
+      `&format=json&pithumbsize=640&origin=*`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    const page = Object.values(data?.query?.pages ?? {})[0];
+    const src  = page?.thumbnail?.source ?? null;
+    wikiImageCache[keyword] = src;
+    return src;
+  } catch {
+    wikiImageCache[keyword] = null;
+    return null;
+  }
+}
+
 // FIX BUG 7: exposed to window for inline onclick in browse nav
 window.jumpPage = function(pg) { browsePage = pg; renderList(); };
-
-function wordCardHTML({ word, senses }) {
   const en  = senses.find(s => s.wseq === 0);  // FIX BUG 14: wseq always number from memory
   const my  = senses.find(s => s.wseq === 1);
   const pos = svc.synset(en?.wrte ?? 0);
@@ -206,7 +272,7 @@ function chipHTML(word) {
 }
 
 // ── Detail pane ───────────────────────────────────────────────────────────────
-function renderDetail() {
+async function renderDetail() {
   const $d = document.getElementById('detailPane');
   if (!$d) return;
 
@@ -226,31 +292,24 @@ function renderDetail() {
   const pos     = svc.synset(en.wrte);
   const p       = pal(pos.id);
   const { definition, notes } = parseSense(en.sense);
-  const { zolai: exZ, translation: exT } = parseExam(en.exam);  // FIX BUG 9
+  const { zolai: exZ, translation: exT } = parseExam(en.exam);
   const prefs   = svc.getPrefs();
   const aiCache = svc.getAICache();
   const ctx     = aiCache[selected];
 
-  // FIX BUG 2 + BUG 3: use Zolai word as image keyword, not English verse
-  // FIX BUG 2: loremflickr replaces dead source.unsplash.com
-  const imgWord  = encodeURIComponent(selected);
-  const imgFallback = encodeURIComponent(definition.split(' ').slice(0,3).join(' ') || 'Myanmar culture');
-  // FIX BUG 11: Google Images uses udm=2 (replaces deprecated tbm=isch)
-  const gQuery   = encodeURIComponent(`${selected} Zomi Tedim Myanmar`);
+  // Google Images search link (English keyword + Zolai cultural context)
+  const keyword  = buildImageKeyword(definition);
+  const gQuery   = encodeURIComponent(`${keyword} ${selected} Zomi Tedim`);
   const gImgUrl  = `https://www.google.com/search?udm=2&q=${gQuery}`;
-  const unsplashUrl = `https://unsplash.com/s/photos/${imgWord}`;
 
+  // Render immediately with image loading placeholder
   $d.innerHTML = `<div class="detail">
 
     ${prefs.showImages ? `
-    <div class="img-area">
-      <img id="detailImg"
-           src="https://loremflickr.com/640/160/${imgWord}?lock=${selected.length * 7}"
-           alt="${sanitize(selected)}"
-           onerror="this.parentElement.innerHTML=imgFallbackHTML('${sanitize(gImgUrl)}','${sanitize(unsplashUrl)}')" />
-      <div class="img-actions">
-        <a href="${gImgUrl}" target="_blank" rel="noopener">🔍 Google Images</a>
-        <a href="${unsplashUrl}" target="_blank" rel="noopener">📷 Unsplash</a>
+    <div class="img-area" id="imgArea">
+      <div class="img-loading">
+        <span class="spinner"></span>
+        <span style="font-size:12px;color:var(--text-3)">Loading image for "${sanitize(keyword)}"…</span>
       </div>
     </div>` : ''}
 
@@ -291,15 +350,41 @@ function renderDetail() {
   </div>`;
 
   document.getElementById('aiBtn')?.addEventListener('click', () => getAICtx(selected));
-}
 
-// Exposed for onerror inline handler — FIX BUG 2 fallback UI
-window.imgFallbackHTML = (gUrl, unsUrl) =>
-  `<div class="img-error">
-    <span>Image unavailable</span>
-    <a href="${gUrl}" target="_blank" rel="noopener">🔍 Search on Google Images</a>
-    <a href="${unsUrl}" target="_blank" rel="noopener">📷 Search on Unsplash</a>
-  </div>`;
+  // Load Wikipedia image asynchronously — don't block the UI render
+  if (prefs.showImages) {
+    const $imgArea = document.getElementById('imgArea');
+    if ($imgArea) {
+      const imgSrc = await fetchWikiImage(keyword);
+      if (!$imgArea.isConnected) return;  // user may have navigated away
+
+      if (imgSrc) {
+        $imgArea.innerHTML = `
+          <img src="${sanitize(imgSrc)}" alt="${sanitize(keyword)}"
+               style="width:100%;height:160px;object-fit:cover;border-radius:var(--r);display:block;margin-bottom:8px"
+               onerror="this.parentElement.innerHTML=noImgHTML('${sanitize(gImgUrl)}')" />
+          <div class="img-actions">
+            <span style="font-size:11px;color:var(--text-3)">📷 Wikipedia · "${sanitize(keyword)}"</span>
+            <a href="${gImgUrl}" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent);margin-left:auto">
+              More on Google Images
+            </a>
+          </div>`;
+      } else {
+        // No Wikipedia image — show a clean Google Images prompt
+        $imgArea.innerHTML = `
+          <div class="img-search-prompt">
+            <div style="font-size:13px;color:var(--text-2);margin-bottom:8px">
+              Image search: <strong>${sanitize(keyword)}</strong>
+            </div>
+            <a class="btn btn-secondary" style="font-size:12px;padding:6px 14px"
+               href="${gImgUrl}" target="_blank" rel="noopener">
+              🔍 Search Google Images
+            </a>
+          </div>`;
+      }
+    }
+  }
+}
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 function selectWord(word) {
@@ -309,6 +394,13 @@ function selectWord(word) {
   );
   renderDetail();
 }
+
+window.noImgHTML = (gUrl) =>
+  `<div class="img-search-prompt">
+    <div style="font-size:13px;color:var(--text-2);margin-bottom:8px">No image available</div>
+    <a class="btn btn-secondary" style="font-size:12px;padding:6px 14px"
+       href="${gUrl}" target="_blank" rel="noopener">🔍 Search Google Images</a>
+  </div>`;
 
 // FIX BUG 12: add anthropic-dangerous-direct-browser-access header
 async function getAICtx(word) {

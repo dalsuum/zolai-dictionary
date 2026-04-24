@@ -98,28 +98,69 @@ export class DictionaryService {
   }
 
   /**
-   * Full-text search: Zolai headword, English sense, Myanmar sense.
-   * FIX BUG 13: iterates sense Map values (in-memory), not localStorage reads.
+   * Ranked full-text search across Zolai, English, and Myanmar.
+   *
+   * WHY ranked instead of flat?
+   *   A flat search returns "Inn", "Inning", "Beginning" in alphabetical
+   *   order — the exact match isn't first. Ranking by match type ensures
+   *   the most relevant result always appears at the top.
+   *
+   * Score tiers (higher = better):
+   *   100 — headword exactly equals query          ("inn"  → "Inn")
+   *    75 — headword starts with query             ("inn"  → "Innkiu")
+   *    50 — headword contains query anywhere       ("inn"  → "Planning")
+   *    30 — English sense contains query as a word ("house"→ words defined as "house")
+   *    20 — Myanmar sense contains query           ("အိမ်" → words with that Myanmar text)
+   *    10 — English sense contains query anywhere  (broad fallback)
+   *
+   * @param {string} query
+   * @returns {Array<{word, senses}>}  sorted by score desc, then alpha
    */
   search(query) {
-    const q = normalise(query);
+    const q     = normalise(query);
+    const qRaw  = (query ?? '').trim();   // for Myanmar script (no lowercase)
     if (!q) return [];
 
-    const matched = new Set();
+    // Precompile word-boundary regex once per query (only for ASCII queries)
+    const isAscii  = /^[a-z0-9 ]+$/.test(q);
+    const wordBoundaryRe = isAscii ? new RegExp(`(?<![a-z])${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(?![a-z])`) : null;
+
+    const scores = new Map(); // word → score
 
     for (const [word, rows] of this._senseMap) {
-      // Match headword (Zolai)
-      if (normalise(word).includes(q)) { matched.add(word); continue; }
-      // Match any sense row (English wseq=0 or Myanmar wseq=1)
+      const nw = normalise(word);
+
+      // ── Tier 1: exact headword ───────────────────────────────────────────
+      if (nw === q) { scores.set(word, 100); continue; }
+
+      // ── Tier 2: headword starts with query ───────────────────────────────
+      if (nw.startsWith(q)) { scores.set(word, 75); continue; }
+
+      // ── Tier 3: headword contains query ──────────────────────────────────
+      if (nw.includes(q)) { scores.set(word, 50); continue; }
+
+      // ── Tiers 4–5: sense matching ─────────────────────────────────────────
+      let best = 0;
       for (const s of rows) {
-        if (normalise(s.sense).includes(q)) { matched.add(word); break; }
+        if (s.wseq === 0) {
+          // English sense — word-boundary match scores higher than substring
+          const ns = normalise(s.sense);
+          if (wordBoundaryRe && wordBoundaryRe.test(ns)) { best = Math.max(best, 30); }
+          else if (ns.includes(q))                       { best = Math.max(best, 10); }
+        } else if (s.wseq === 1) {
+          // Myanmar sense — exact substring (Myanmar doesn't lowercase)
+          if (s.sense.includes(qRaw)) { best = Math.max(best, 20); }
+        }
       }
+      if (best > 0) scores.set(word, best);
     }
 
-    return [...matched]
-      .filter(w => this._wordMap.has(w))
-      .sort((a, b) => a.localeCompare(b))
-      .map(w => ({ word: this._wordMap.get(w), senses: this.sensesFor(w) }));
+    return [...scores.entries()]
+      .sort(([wa, sa], [wb, sb]) =>
+        sb !== sa ? sb - sa : wa.localeCompare(wb)   // score desc → alpha asc
+      )
+      .filter(([w]) => this._wordMap.has(w))
+      .map(([w]) => ({ word: this._wordMap.get(w), senses: this.sensesFor(w) }));
   }
 
   /** Resolve a synset id → POS descriptor. */
