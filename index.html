@@ -307,6 +307,7 @@ function renderDetail(word) {
   const { zolai: exZ, translation: exT } = parseExam(en.exam);
   const prefs = svc.getPrefs();
   const hasKey = !!localStorage.getItem('gemini_api_key');
+  const q = query.trim();  // current search query for highlighting
 
   // Image keyword — extract from definition, fallback to word
   const keyword = buildImgKeyword(definition);
@@ -326,7 +327,7 @@ function renderDetail(word) {
       </div>
     </div>` : ''}
 
-    <div class="detail-zolai">${sanitize(word)}</div>
+    <div class="detail-zolai">${hl(word, q)}</div>
     <div class="detail-pos">
       <span class="badge" style="background:${p.bg};color:${p.text};border-color:${p.bd}">${sanitize(pos.name)}</span>
       ${pos.shortname ? `<span style="font-size:11px;color:var(--text-3);margin-left:5px">${sanitize(pos.shortname)}</span>` : ''}
@@ -335,23 +336,23 @@ function renderDetail(word) {
     <div class="meanings">
       <div class="meaning-row">
         <span class="lang-tag lang-en">EN</span>
-        <span class="meaning-en">${sanitize(definition)}</span>
+        <span class="meaning-en">${hl(definition, q)}</span>
       </div>
       ${my ? `<div class="meaning-row">
         <span class="lang-tag lang-my">MM</span>
-        <span class="meaning-my">${sanitize(my.sense)}</span>
+        <span class="meaning-my">${hl(my.sense, q)}</span>
       </div>` : ''}
     </div>
 
     ${notes ? `<div class="section">
       <div class="section-lbl">Notes</div>
-      <p class="notes-text">${sanitize(notes)}</p>
+      <p class="notes-text">${hl(notes, q)}</p>
     </div>` : ''}
 
     ${exZ ? `<div class="section">
       <div class="section-lbl">Example</div>
-      <p class="example-text">${sanitize(exZ)}</p>
-      ${exT ? `<p class="example-trans">${sanitize(exT)}</p>` : ''}
+      <p class="example-text">${hl(exZ, q)}</p>
+      ${exT ? `<p class="example-trans">${hl(exT, q)}</p>` : ''}
     </div>` : ''}
 
     ${hasKey ? `<div class="ai-section" id="aiSection">
@@ -469,6 +470,33 @@ function selectWord(word) {
 }
 
 // ── Gemini AI ────────────────────────────────────────────────────────────────
+// Model cascade: try newest → older, v1 → v1beta
+const GEMINI_MODELS = [
+  'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+  'https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent',
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
+];
+
+async function callGemini(key, prompt) {
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens: 150 }
+  });
+  for (const endpoint of GEMINI_MODELS) {
+    try {
+      const res  = await fetch(`${endpoint}?key=${encodeURIComponent(key)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body
+      });
+      const data = await res.json();
+      if (data.error) continue;  // try next model
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      if (text) return text;
+    } catch { continue; }
+  }
+  throw new Error('All Gemini models failed. Check your API key.');
+}
+
 async function getGeminiCtx(word, definition) {
   const key = localStorage.getItem('gemini_api_key');
   if (!key) { showToast('Add your Gemini key in ⚙️ Settings first', 'error'); return; }
@@ -480,24 +508,10 @@ async function getGeminiCtx(word, definition) {
   if ($btn) { $btn.disabled = true; $btn.innerHTML = '<span class="spinner"></span> Loading…'; }
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`,
-      {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text:
-            `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin / Zomi) word "${word}" meaning "${definition}". Be concise and factual.`
-          }] }],
-          generationConfig: { maxOutputTokens: 150 }
-        })
-      }
-    );
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    aiCache[word] = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? 'No context returned.';
+    const prompt = `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin / Zomi) word "${word}" meaning "${definition}". Be concise and factual.`;
+    aiCache[word] = await callGemini(key, prompt);
   } catch (err) {
-    aiCache[word] = `Could not load context: ${err.message}`;
+    aiCache[word] = `Error: ${err.message}`;
   }
 
   aiLoading[word] = false;
