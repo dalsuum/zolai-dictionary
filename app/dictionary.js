@@ -36,22 +36,38 @@ export class DictionaryService {
     this._ready    = false;
   }
 
-  // ── Init ────────────────────────────────────────────────────────────────────
-
+  // ── Init — two-phase split loading ─────────────────────────────────────────
   /**
-   * FIX BUG 5: fetch seed ONCE and build in-memory indices.
-   * No localStorage write for words/senses — avoids quota (BUG 1).
+   * Phase 1: load words-index.json (~312 KB) → app is usable immediately.
+   * Phase 2: load words-senses.json (~4.3 MB) in background → full search.
+   *
+   * WHY split loading?
+   *   The full dataset is 4.6 MB. Loading it synchronously before rendering
+   *   causes a blank screen for 3-8 seconds on mobile / slow connections.
+   *   By loading the word list first, the browse grid appears in < 1 second.
+   *   Senses (needed for search + detail view) arrive 1-2 seconds later.
+   *
+   * @param {Function} onSensesReady  called when senses finish loading
    */
-  async init() {
-    const seed = await this._fetchSeed();
-    this._synset = seed.synset ?? [];
-    this._buildIndex(seed.words ?? [], seed.senses ?? []);
-    this._ready = true;
+  async init(onSensesReady) {
+    // Phase 1 — index (words + synset) — small, fast
+    const index = await this._fetch('./db/words-index.json');
+    this._synset = index.synset ?? [];
+    this._buildIndex(index.words ?? [], []);
+    this._ready  = true;
+
+    // Phase 2 — senses — larger, load in background
+    this._fetch('./db/words-senses.json').then(data => {
+      this._buildIndex(index.words ?? [], data.senses ?? []);
+      if (onSensesReady) onSensesReady();
+    }).catch(err => {
+      console.warn('[DictionaryService] Senses failed to load:', err.message);
+    });
   }
 
-  async _fetchSeed() {
-    const res = await fetch(this._seedUrl);
-    if (!res.ok) throw new Error(`Seed fetch failed: ${res.status} ${this._seedUrl}`);
+  async _fetch(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${url}`);
     return res.json();
   }
 

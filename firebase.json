@@ -12,10 +12,11 @@
     ],
     "headers": [
       {
-        "source": "/db/words.json",
+        "source": "/db/**",
         "headers": [
           { "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=3600" },
-          { "key": "Content-Type",  "value": "application/json; charset=utf-8" }
+          { "key": "Content-Type",  "value": "application/json; charset=utf-8" },
+          { "key": "Content-Encoding", "value": "identity" }
         ]
       },
       {
@@ -33,19 +34,16 @@
       {
         "source": "**/*.html",
         "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "X-Frame-Options",        "value": "DENY" },
-          { "key": "X-XSS-Protection",       "value": "1; mode=block" },
+          { "key": "Cache-Control",           "value": "public, max-age=0, must-revalidate" },
+          { "key": "X-Content-Type-Options",  "value": "nosniff" },
+          { "key": "X-Frame-Options",         "value": "DENY" },
+          { "key": "X-XSS-Protection",        "value": "1; mode=block" },
           { "key": "Referrer-Policy",         "value": "strict-origin-when-cross-origin" }
         ]
       }
     ],
     "rewrites": [
-      {
-        "source": "/admin",
-        "destination": "/admin.html"
-      }
+      { "source": "/admin", "destination": "/admin.html" }
     ],
     "cleanUrls": true,
     "trailingSlash": false
