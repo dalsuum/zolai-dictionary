@@ -1,0 +1,68 @@
+name: Deploy to Firebase Hosting
+
+# WHY this workflow?
+#   Automates the full CI → deploy pipeline so every `git push origin main`
+#   updates the live site without any manual steps.
+#
+# Secrets required (add in GitHub → Settings → Secrets → Actions):
+#   FIREBASE_SERVICE_ACCOUNT  — JSON key from a Firebase service account
+#                               with the "Firebase Hosting Admin" role.
+#
+# How to get the service account JSON:
+#   1. Firebase console → Project settings → Service accounts
+#   2. Click "Generate new private key" → download the JSON
+#   3. In GitHub repo → Settings → Secrets → Actions → New repository secret
+#      Name: FIREBASE_SERVICE_ACCOUNT
+#      Value: (paste the entire JSON content)
+
+on:
+  push:
+    branches:
+      - main
+  # Allow manual trigger from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Validate words.json ────────────────────────────────────────────
+      # WHY: A corrupt db/words.json would deploy silently and break the app.
+      # Fail fast here before touching Firebase.
+      - name: Validate db/words.json
+        run: |
+          python3 - << 'EOF'
+          import json, sys
+          try:
+            with open('db/words.json', encoding='utf-8') as f:
+              db = json.load(f)
+            words  = len(db.get('words', []))
+            senses = len(db.get('senses', []))
+            synset = len(db.get('synset', []))
+            assert words  > 0,  "words array is empty"
+            assert senses > 0,  "senses array is empty"
+            assert synset > 0,  "synset array is empty"
+            assert senses >= words, f"fewer senses ({senses}) than words ({words})"
+            print(f"✓ db/words.json valid — {words} words, {senses} senses, {synset} POS types")
+          except Exception as e:
+            print(f"✗ db/words.json invalid: {e}", file=sys.stderr)
+            sys.exit(1)
+          EOF
+
+      # ── 3. Deploy to Firebase Hosting ────────────────────────────────────
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken:            ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId:            live
+          projectId:            zolai-dictionary
+          # WHY entryPoint?
+          #   firebase.json lives at the repo root, so no subdirectory needed.
+          entryPoint:           .

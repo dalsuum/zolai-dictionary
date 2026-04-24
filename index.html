@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Zolai (Tedim Chin / Zomi) trilingual dictionary — Zolai, English and Myanmar translations." />
+  <title>Zolai Dictionary — Tedim · English · မြန်မာ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/main.css" />
+  <style>
+    /* Browse pagination */
+    .browse-nav{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .browse-nav button{padding:4px 10px;font-size:12px;font-family:var(--font-sans);border:1px solid var(--border-2);border-radius:var(--r);background:var(--bg);color:var(--text-2);cursor:pointer}
+    .browse-nav button:hover,.browse-nav button.active{border-color:var(--accent);color:var(--accent)}
+    .browse-nav .page-info{font-size:12px;color:var(--text-3);margin-left:auto}
+    /* Image area */
+    .img-area{position:relative;margin-bottom:12px}
+    .img-area img{width:100%;height:160px;object-fit:cover;border-radius:var(--r);display:block}
+    .img-area .img-actions{display:flex;gap:10px;margin-top:6px;font-size:12px}
+    .img-area .img-actions a{color:var(--accent)}
+    .img-error{display:flex;align-items:center;justify-content:center;height:120px;border:1px dashed var(--border-2);border-radius:var(--r);color:var(--text-3);font-size:13px;gap:8px;flex-direction:column;margin-bottom:12px}
+    .img-error a{color:var(--accent);font-size:12px}
+  </style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Site navigation">
+  <span class="nav-brand">Zo<em>lai</em></span>
+  <span class="nav-meta" id="navMeta">Tedim · English · မြန်မာ</span>
+</nav>
+
+<main class="container" id="app">
+  <p class="muted" style="padding:3rem 0;text-align:center">
+    <span class="spinner"></span>&ensp;Loading dictionary…
+  </p>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+/**
+ * index.html — Client entry point
+ * Bugs fixed: 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+ */
+import { DictionaryService } from './app/dictionary.js';
+import { debounce, sanitize, parseSense, parseExam, truncate } from './app/utils.js';
+
+// ── POS palette ──────────────────────────────────────────────────────────────
+const POS_PAL = {
+  0:  {bg:'#E1F5EE',text:'#085041',bd:'#9FE1CB'},  // Noun
+  1:  {bg:'#E6F1FB',text:'#0C447C',bd:'#B5D4F4'},  // Verb
+  2:  {bg:'#FAEEDA',text:'#633806',bd:'#FAC775'},  // Adjective
+  3:  {bg:'#FAECE7',text:'#4A1B0C',bd:'#F5C4B3'},  // Adverb
+  4:  {bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},  // Preposition
+  5:  {bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},  // Conjunction
+  6:  {bg:'#EEEDFE',text:'#26215C',bd:'#CECBF6'},  // Pronoun
+  7:  {bg:'#FCEBEB',text:'#501313',bd:'#F7C1C1'},  // Interjection
+  19: {bg:'#EAF3DE',text:'#173404',bd:'#C0DD97'},  // Number
+};
+const pal = id => POS_PAL[id] ?? POS_PAL[0];
+
+// ── State ────────────────────────────────────────────────────────────────────
+const svc = new DictionaryService();
+let selected   = null;
+let query      = '';
+let aiLoading  = false;
+let browsePage = 0;
+const PAGE_SIZE = 80;
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const $app   = document.getElementById('app');
+const $toast = document.getElementById('toast');
+let toastTimer;
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+async function boot() {
+  try {
+    await svc.init();
+    document.getElementById('navMeta').textContent =
+      `${svc.wordCount.toLocaleString()} words · Tedim · English · မြန်မာ`;
+    renderPage();
+  } catch (err) {
+    $app.innerHTML = `<p class="no-results">Failed to load: ${sanitize(err.message)}</p>`;
+  }
+}
+
+// ── Page scaffold (rendered once) ────────────────────────────────────────────
+function renderPage() {
+  const prefs = svc.getPrefs();
+  $app.innerHTML = `
+    <div class="search-wrap">
+      <input class="search-input" id="searchInput" type="search"
+             placeholder="Search Zolai (Tedim), English, or Myanmar…"
+             value="${sanitize(query)}" autocomplete="off" aria-label="Search" />
+      <div class="search-meta">
+        <span class="muted" id="searchCount"></span>
+        <div class="toggle-row">
+          <label class="toggle" aria-label="Toggle images">
+            <input type="checkbox" id="imgToggle" ${prefs.showImages ? 'checked' : ''} />
+            <span class="toggle-track"></span>
+          </label>
+          <span class="toggle-label">Images</span>
+        </div>
+      </div>
+    </div>
+    <div class="layout">
+      <div id="listPane"></div>
+      <div id="detailPane"></div>
+    </div>`;
+
+  document.getElementById('searchInput').addEventListener(
+    'input', debounce(e => { query = e.target.value; browsePage = 0; renderList(); renderDetail(); }, 200)
+  );
+  document.getElementById('imgToggle').addEventListener('change', e => {
+    svc.setPrefs({ showImages: e.target.checked });
+    renderDetail();
+  });
+  renderList();
+  renderDetail();
+}
+
+// ── List pane ─────────────────────────────────────────────────────────────────
+function renderList() {
+  const $list = document.getElementById('listPane');
+  if (!$list) return;
+
+  if (query.trim()) {
+    // ── Search results ──
+    const results = svc.search(query);
+    document.getElementById('searchCount').textContent =
+      `${results.length} result${results.length !== 1 ? 's' : ''}`;
+
+    if (!results.length) {
+      $list.innerHTML = `<p class="no-results">No results for "<strong>${sanitize(query)}</strong>"</p>`;
+      return;
+    }
+    $list.innerHTML = `<div class="word-list">${results.slice(0, 200).map(r => wordCardHTML(r)).join('')}</div>`;
+
+  } else {
+    // ── Paginated browse (FIX BUG 7: not all 7861 at once) ──
+    const all    = svc.allWords();
+    const total  = all.length;
+    const pages  = Math.ceil(total / PAGE_SIZE);
+    const offset = browsePage * PAGE_SIZE;
+    const slice  = all.slice(offset, offset + PAGE_SIZE);
+
+    document.getElementById('searchCount').textContent =
+      `${total.toLocaleString()} words`;
+
+    // Alphabet jump buttons (A–Z)
+    const alpha = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(ch => {
+      const idx = all.findIndex(w => w.word.toUpperCase().startsWith(ch));
+      if (idx === -1) return '';
+      const pg = Math.floor(idx / PAGE_SIZE);
+      return `<button onclick="jumpPage(${pg})">${ch}</button>`;
+    }).join('');
+
+    $list.innerHTML = `
+      <p class="section-label-sm">Browse — page ${browsePage + 1} of ${pages}</p>
+      <div class="browse-grid">${slice.map(w => chipHTML(w)).join('')}</div>
+      <div class="browse-nav">
+        <button ${browsePage === 0 ? 'disabled' : ''} onclick="jumpPage(${browsePage - 1})">‹ Prev</button>
+        ${alpha}
+        <button ${browsePage >= pages - 1 ? 'disabled' : ''} onclick="jumpPage(${browsePage + 1})">Next ›</button>
+        <span class="page-info">${offset + 1}–${Math.min(offset + PAGE_SIZE, total)} of ${total.toLocaleString()}</span>
+      </div>`;
+  }
+
+  $list.querySelectorAll('[data-word]').forEach(el => {
+    el.addEventListener('click', () => selectWord(el.dataset.word));
+    if (el.dataset.word === selected) el.classList.add('is-active');
+  });
+}
+
+// FIX BUG 7: exposed to window for inline onclick in browse nav
+window.jumpPage = function(pg) { browsePage = pg; renderList(); };
+
+function wordCardHTML({ word, senses }) {
+  const en  = senses.find(s => s.wseq === 0);  // FIX BUG 14: wseq always number from memory
+  const my  = senses.find(s => s.wseq === 1);
+  const pos = svc.synset(en?.wrte ?? 0);
+  const p   = pal(pos.id);
+  const { definition } = parseSense(en?.sense ?? '');
+  // FIX BUG 10: truncate long Myanmar verse to word-level display
+  const myText = my ? truncate(my.sense, 50) : '';
+
+  return `<div class="word-card" data-word="${sanitize(word.word)}">
+    <div class="wc-zolai">${sanitize(word.word)}</div>
+    <div class="wc-en">${sanitize(truncate(definition, 60))}</div>
+    ${myText ? `<div class="wc-my">${sanitize(myText)}</div>` : ''}
+    <div class="wc-foot"><span class="badge" style="background:${p.bg};color:${p.text};border-color:${p.bd}">${sanitize(pos.name)}</span></div>
+  </div>`;
+}
+
+function chipHTML(word) {
+  const senses = svc.sensesFor(word.word);  // FIX BUG 8: O(1) Map lookup
+  const en = senses.find(s => s.wseq === 0);
+  const my = senses.find(s => s.wseq === 1);
+  const { definition } = parseSense(en?.sense ?? '');
+  return `<div class="chip" data-word="${sanitize(word.word)}">
+    <span class="chip-z">${sanitize(word.word)}</span>
+    <span class="chip-e">${sanitize(truncate(definition, 22))}</span>
+    ${my ? `<span class="chip-m">${sanitize(truncate(my.sense, 20))}</span>` : ''}
+  </div>`;
+}
+
+// ── Detail pane ───────────────────────────────────────────────────────────────
+function renderDetail() {
+  const $d = document.getElementById('detailPane');
+  if (!$d) return;
+
+  if (!selected) {
+    $d.innerHTML = `<div class="detail detail-empty">
+      <div class="detail-empty-brand">Zo<em>lai</em></div>
+      <span class="muted" style="font-size:13px">Select a word to view details</span>
+    </div>`;
+    return;
+  }
+
+  const senses = svc.sensesFor(selected);
+  const en     = senses.find(s => s.wseq === 0);
+  const my     = senses.find(s => s.wseq === 1);
+  if (!en) { $d.innerHTML = `<div class="detail"><p class="no-results">No entry found.</p></div>`; return; }
+
+  const pos     = svc.synset(en.wrte);
+  const p       = pal(pos.id);
+  const { definition, notes } = parseSense(en.sense);
+  const { zolai: exZ, translation: exT } = parseExam(en.exam);  // FIX BUG 9
+  const prefs   = svc.getPrefs();
+  const aiCache = svc.getAICache();
+  const ctx     = aiCache[selected];
+
+  // FIX BUG 2 + BUG 3: use Zolai word as image keyword, not English verse
+  // FIX BUG 2: loremflickr replaces dead source.unsplash.com
+  const imgWord  = encodeURIComponent(selected);
+  const imgFallback = encodeURIComponent(definition.split(' ').slice(0,3).join(' ') || 'Myanmar culture');
+  // FIX BUG 11: Google Images uses udm=2 (replaces deprecated tbm=isch)
+  const gQuery   = encodeURIComponent(`${selected} Zomi Tedim Myanmar`);
+  const gImgUrl  = `https://www.google.com/search?udm=2&q=${gQuery}`;
+  const unsplashUrl = `https://unsplash.com/s/photos/${imgWord}`;
+
+  $d.innerHTML = `<div class="detail">
+
+    ${prefs.showImages ? `
+    <div class="img-area">
+      <img id="detailImg"
+           src="https://loremflickr.com/640/160/${imgWord}?lock=${selected.length * 7}"
+           alt="${sanitize(selected)}"
+           onerror="this.parentElement.innerHTML=imgFallbackHTML('${sanitize(gImgUrl)}','${sanitize(unsplashUrl)}')" />
+      <div class="img-actions">
+        <a href="${gImgUrl}" target="_blank" rel="noopener">🔍 Google Images</a>
+        <a href="${unsplashUrl}" target="_blank" rel="noopener">📷 Unsplash</a>
+      </div>
+    </div>` : ''}
+
+    <div class="detail-zolai">${sanitize(selected)}</div>
+    <div class="detail-pos">
+      <span class="badge" style="background:${p.bg};color:${p.text};border-color:${p.bd}">${sanitize(pos.name)}</span>
+      ${pos.shortname ? `<span style="font-size:11px;color:var(--text-3);margin-left:6px">${sanitize(pos.shortname)}</span>` : ''}
+    </div>
+
+    <div class="meanings">
+      <div class="meaning-row">
+        <span class="lang-tag lang-en">EN</span>
+        <span class="meaning-en">${sanitize(definition)}</span>
+      </div>
+      ${my ? `<div class="meaning-row">
+        <span class="lang-tag lang-my">MM</span>
+        <span class="meaning-my">${sanitize(my.sense)}</span>
+      </div>` : ''}
+    </div>
+
+    ${notes ? `<div class="section">
+      <div class="section-lbl">Notes</div>
+      <p class="notes-text">${sanitize(notes)}</p>
+    </div>` : ''}
+
+    ${exZ ? `<div class="section">
+      <div class="section-lbl">Example</div>
+      <p class="example-text">${sanitize(exZ)}</p>
+      ${exT ? `<p class="example-trans">${sanitize(exT)}</p>` : ''}
+    </div>` : ''}
+
+    <div class="section">
+      <button class="ai-btn" id="aiBtn">
+        ${aiLoading ? '<span class="spinner"></span> Loading…' : ctx ? '↻ Refresh context' : '✦ AI cultural context'}
+      </button>
+      ${ctx ? `<div class="ai-context">${sanitize(ctx)}</div>` : ''}
+    </div>
+  </div>`;
+
+  document.getElementById('aiBtn')?.addEventListener('click', () => getAICtx(selected));
+}
+
+// Exposed for onerror inline handler — FIX BUG 2 fallback UI
+window.imgFallbackHTML = (gUrl, unsUrl) =>
+  `<div class="img-error">
+    <span>Image unavailable</span>
+    <a href="${gUrl}" target="_blank" rel="noopener">🔍 Search on Google Images</a>
+    <a href="${unsUrl}" target="_blank" rel="noopener">📷 Search on Unsplash</a>
+  </div>`;
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+function selectWord(word) {
+  selected = word;
+  document.querySelectorAll('[data-word]').forEach(el =>
+    el.classList.toggle('is-active', el.dataset.word === word)
+  );
+  renderDetail();
+}
+
+// FIX BUG 12: add anthropic-dangerous-direct-browser-access header
+async function getAICtx(word) {
+  if (aiLoading) return;
+  aiLoading = true;
+  renderDetail();
+  const cache = svc.getAICache();
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin/Zomi) word "${word}". Be concise.`,
+        }],
+      }),
+    });
+    const data = await res.json();
+    cache[word] = data?.content?.[0]?.text ?? 'No context available.';
+  } catch (err) {
+    cache[word] = `Context unavailable: ${err.message}`;
+  }
+  svc.setAICache(cache);
+  aiLoading = false;
+  renderDetail();
+}
+
+function showToast(msg, type = 'success') {
+  $toast.textContent = msg;
+  $toast.className = `toast toast--visible toast--${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2800);
+}
+
+boot();
+</script>
+</body>
+</html>

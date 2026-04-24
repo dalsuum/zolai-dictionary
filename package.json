@@ -1,0 +1,25 @@
+{
+  "name": "zolai-dictionary",
+  "version": "3.0.0",
+  "description": "Open-source trilingual dictionary for Zolai (Tedim Chin / Zomi) — English and Myanmar translations.",
+  "main": "index.html",
+  "scripts": {
+    "extract": "node scripts/extract-bible-words.mjs",
+    "enrich": "node scripts/enrich-definitions.mjs",
+    "serve": "python3 -m http.server 8000"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dalsuum/zolai-dictionary.git"
+  },
+  "keywords": ["zolai", "tedim", "zomi", "chin", "myanmar", "dictionary", "trilingual"],
+  "author": "dalsuum",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dalsuum/zolai-dictionary/issues"
+  },
+  "homepage": "https://zolai-dictionary.web.app",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.0"
+  }
+}

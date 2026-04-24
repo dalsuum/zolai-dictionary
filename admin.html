@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Zolai Dictionary — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/main.css" />
+  <link rel="stylesheet" href="assets/css/admin.css" />
+</head>
+<body>
+
+<h2 class="sr-only">Zolai Dictionary admin panel — manage word entries</h2>
+
+<nav class="nav" aria-label="Admin navigation">
+  <span class="nav-brand">Zo<em>lai</em></span>
+  <span class="admin-badge">Admin</span>
+  <a class="nav-back" href="index.html" style="margin-left:auto">← Dictionary</a>
+</nav>
+
+<main class="container" id="app"></main>
+
+<!-- Edit / Add modal -->
+<div class="overlay" id="editOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <h3 id="modalTitle">Add word</h3>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label" for="f-word">Zolai word *</label>
+        <input class="input" id="f-word" placeholder="e.g. Hoih" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="f-pos">Part of speech *</label>
+        <select class="input select" id="f-pos"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="f-sense-en">English meaning *</label>
+        <input class="input" id="f-sense-en" placeholder="e.g. Good / beautiful" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="f-sense-my">Myanmar (Burmese)</label>
+        <input class="input" id="f-sense-my" placeholder="e.g. ကောင်းသော / လှသော" />
+      </div>
+      <div class="form-group form-full">
+        <label class="form-label" for="f-exam">Example sentence</label>
+        <input class="input" id="f-exam" placeholder="Zolai sentence (English translation)" />
+      </div>
+      <div class="form-group form-full">
+        <label class="form-label" for="f-notes">Notes</label>
+        <textarea class="input textarea" id="f-notes" placeholder="Optional linguistic or cultural notes"></textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
+      <button class="btn btn-primary"   id="modalSaveBtn">Add word</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div class="overlay" id="deleteOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+  <div class="modal" style="max-width:460px">
+    <h3 id="deleteTitle">Delete word</h3>
+    <div class="delete-msg" id="deleteMsg"></div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" id="deleteCancelBtn">Cancel</button>
+      <button class="btn btn-danger"    id="deleteConfirmBtn">Delete permanently</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+/**
+ * admin.html — Admin entry point
+ *
+ * Architecture note:
+ *   All data operations are delegated to DictionaryService (app/dictionary.js).
+ *   This script is responsible only for:
+ *     1. Auth gate (password check).
+ *     2. Binding UI events to service calls.
+ *     3. Re-rendering the table after mutations.
+ *
+ * Security note (Least Privilege):
+ *   The admin password is a lightweight deterrent — it stops casual visitors.
+ *   For production, replace this with server-side authentication.
+ */
+
+import { DictionaryService } from './app/dictionary.js';
+import { sanitize, parseSense } from './app/utils.js';
+
+// ─── POS colour palette ───────────────────────────────────────────────────────
+const POS_PALETTE = {
+  0:  { bg: '#E1F5EE', text: '#085041', bd: '#9FE1CB' },
+  1:  { bg: '#E6F1FB', text: '#0C447C', bd: '#B5D4F4' },
+  2:  { bg: '#FAEEDA', text: '#633806', bd: '#FAC775' },
+  3:  { bg: '#FAECE7', text: '#4A1B0C', bd: '#F5C4B3' },
+  4:  { bg: '#F1EFE8', text: '#2C2C2A', bd: '#D3D1C7' },
+  5:  { bg: '#F1EFE8', text: '#2C2C2A', bd: '#D3D1C7' },
+  6:  { bg: '#EEEDFE', text: '#26215C', bd: '#CECBF6' },
+  7:  { bg: '#FCEBEB', text: '#501313', bd: '#F7C1C1' },
+  19: { bg: '#EAF3DE', text: '#173404', bd: '#C0DD97' },
+};
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+// Admin password is set via environment/config — not stored in source code.
+// To set: open browser console on this page and run:
+//   localStorage.setItem('zolai_admin_pw', 'your-password-here')
+// WHY: passwords must never be committed to version control.
+const ADMIN_PW = localStorage.getItem('zolai_admin_pw') ?? '';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const svc       = new DictionaryService();
+let authed      = false;
+let filterVal   = '';
+let editTarget  = null;   // null = adding new word; string = word being edited
+
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+const $app           = document.getElementById('app');
+const $editOverlay   = document.getElementById('editOverlay');
+const $deleteOverlay = document.getElementById('deleteOverlay');
+const $toast         = document.getElementById('toast');
+let toastTimer;
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────────
+async function boot() {
+  await svc.init();
+  populatePosSelect();
+  render();
+
+  // Modal close buttons
+  document.getElementById('modalCancelBtn').addEventListener('click',  closeEditModal);
+  document.getElementById('deleteCancelBtn').addEventListener('click', closeDeleteModal);
+
+  // Save word
+  document.getElementById('modalSaveBtn').addEventListener('click', handleSave);
+
+  // Close overlays on backdrop click or Escape
+  [$editOverlay, $deleteOverlay].forEach(overlay => {
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.hidden = true; });
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { $editOverlay.hidden = true; $deleteOverlay.hidden = true; }
+  });
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+function renderLock() {
+  $app.innerHTML = `
+    <div class="lock">
+      <div class="lock-icon">◆</div>
+      <h2>Admin access</h2>
+      <p>Enter the admin password to continue</p>
+      <input class="input" type="password" id="pwInput" placeholder="Password" autocomplete="current-password" />
+      <button class="btn btn-primary" id="loginBtn">Sign in</button>
+      <span class="lock-hint">Contact the site owner for access.</span>
+    </div>`;
+
+  const attempt = () => {
+    const val = document.getElementById('pwInput')?.value ?? '';
+    if (val === ADMIN_PW) { authed = true; render(); }
+    else {
+      const el = document.getElementById('pwInput');
+      if (el) { el.style.borderColor = '#c0392b'; el.value = ''; el.focus(); }
+      setTimeout(() => { const e2 = document.getElementById('pwInput'); if (e2) e2.style.borderColor = ''; }, 700);
+    }
+  };
+
+  document.getElementById('loginBtn').addEventListener('click', attempt);
+  document.getElementById('pwInput').addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
+  document.getElementById('pwInput').focus();
+}
+
+// ─── Main table render ────────────────────────────────────────────────────────
+function render() {
+  if (!authed) { renderLock(); return; }
+
+  const all      = svc.allWords();
+  const flt      = filterVal.toLowerCase().trim();
+  const filtered = flt
+    ? all.filter(w => {
+        const senses = svc.sensesFor(w.word);
+        return w.word.toLowerCase().includes(flt)
+          || senses.some(s => s.sense.toLowerCase().includes(flt));
+      })
+    : all;
+
+  $app.innerHTML = `
+    <div class="toolbar">
+      <h1>Dictionary management <span class="muted" style="font-size:14px;font-weight:400">${all.length} words</span></h1>
+      <div class="toolbar-right">
+        <input class="input filter-input" type="search" id="filterInput"
+               placeholder="Filter words…" value="${sanitize(filterVal)}"
+               aria-label="Filter word list" />
+        <button class="btn btn-primary" id="addBtn">+ Add word</button>
+        <button class="btn btn-secondary" id="signOutBtn">Sign out</button>
+      </div>
+    </div>
+
+    <div class="table-wrap" role="region" aria-label="Word list">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="col-word">Zolai</th>
+            <th class="col-en">English</th>
+            <th class="col-my">Myanmar</th>
+            <th class="col-pos">POS</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filtered.length === 0
+            ? `<tr><td colspan="5" class="no-results">No words match your filter.</td></tr>`
+            : filtered.map(w => rowHTML(w)).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  document.getElementById('filterInput').addEventListener('input', e => {
+    filterVal = e.target.value; render();
+  });
+  document.getElementById('addBtn').addEventListener('click', openAddModal);
+  document.getElementById('signOutBtn').addEventListener('click', () => { authed = false; render(); });
+
+  $app.querySelectorAll('[data-edit]').forEach(btn =>
+    btn.addEventListener('click', () => openEditModal(btn.dataset.edit))
+  );
+  $app.querySelectorAll('[data-delete]').forEach(btn =>
+    btn.addEventListener('click', () => openDeleteModal(btn.dataset.delete))
+  );
+}
+
+function rowHTML(word) {
+  const senses = svc.sensesFor(word.word);
+  const en  = senses.find(s => s.wseq === 0);
+  const my  = senses.find(s => s.wseq === 1);
+  const pos = svc.synset(en?.wrte ?? 0);
+  const pal = POS_PALETTE[pos.id] ?? POS_PALETTE[0];
+  const { definition } = parseSense(en?.sense ?? '');
+
+  return `
+    <tr>
+      <td class="col-word">${sanitize(word.word)}</td>
+      <td class="col-en">${sanitize(definition)}</td>
+      <td class="col-my">${sanitize(my?.sense ?? '—')}</td>
+      <td class="col-pos">
+        <span class="badge" style="background:${pal.bg};color:${pal.text};border-color:${pal.bd}">
+          ${sanitize(pos.name)}
+        </span>
+      </td>
+      <td class="col-actions">
+        <div class="row-actions">
+          <button class="btn btn-secondary btn-sm" data-edit="${sanitize(word.word)}">Edit</button>
+          <button class="btn btn-danger    btn-sm" data-delete="${sanitize(word.word)}">Del</button>
+        </div>
+      </td>
+    </tr>`;
+}
+
+// ─── POS dropdown ─────────────────────────────────────────────────────────────
+function populatePosSelect() {
+  // Populate once; synset is available after svc.init()
+  const $sel = document.getElementById('f-pos');
+  svc.allSynsets().forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.name;
+    $sel.appendChild(opt);
+  });
+}
+
+// ─── Edit modal ───────────────────────────────────────────────────────────────
+function openAddModal() {
+  editTarget = null;
+  document.getElementById('modalTitle').textContent = 'Add word';
+  document.getElementById('modalSaveBtn').textContent = 'Add word';
+  clearModalForm();
+  $editOverlay.hidden = false;
+  document.getElementById('f-word').focus();
+}
+
+function openEditModal(word) {
+  editTarget = word;
+  const senses = svc.sensesFor(word);
+  const en     = senses.find(s => s.wseq === 0);
+  const my     = senses.find(s => s.wseq === 1);
+  const { definition, notes } = parseSense(en?.sense ?? '');
+
+  document.getElementById('modalTitle').textContent = `Edit — ${word}`;
+  document.getElementById('modalSaveBtn').textContent = 'Save changes';
+  document.getElementById('f-word').value    = word;
+  document.getElementById('f-pos').value     = en?.wrte ?? 0;
+  document.getElementById('f-sense-en').value = definition;
+  document.getElementById('f-sense-my').value = my?.sense ?? '';
+  document.getElementById('f-exam').value    = en?.exam ?? '';
+  document.getElementById('f-notes').value   = notes;
+  $editOverlay.hidden = false;
+  document.getElementById('f-word').focus();
+}
+
+function closeEditModal() { $editOverlay.hidden = true; }
+
+function clearModalForm() {
+  ['f-word','f-sense-en','f-sense-my','f-exam','f-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('f-pos').selectedIndex = 0;
+}
+
+function handleSave() {
+  const word    = document.getElementById('f-word').value.trim();
+  const senseEn = document.getElementById('f-sense-en').value.trim();
+  const senseMy = document.getElementById('f-sense-my').value.trim();
+  const wrte    = parseInt(document.getElementById('f-pos').value, 10);
+  const exam    = document.getElementById('f-exam').value.trim();
+  const notes   = document.getElementById('f-notes').value.trim();
+
+  if (!word || !senseEn) { showToast('Zolai word and English meaning are required.', 'error'); return; }
+
+  // Compose sense string: "definition — notes" (notes optional)
+  const senseEnFull = notes ? `${senseEn} — ${notes}` : senseEn;
+
+  try {
+    if (editTarget) {
+      svc.updateWord(editTarget, { word, wrte, senseEn: senseEnFull, senseMy, exam });
+      showToast('Word updated');
+    } else {
+      svc.addWord({ word, wrte, senseEn: senseEnFull, senseMy, exam });
+      showToast('Word added');
+    }
+    closeEditModal();
+    render();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// ─── Delete modal ─────────────────────────────────────────────────────────────
+function openDeleteModal(word) {
+  document.getElementById('deleteMsg').innerHTML =
+    `Delete <strong>"${sanitize(word)}"</strong>? This cannot be undone.`;
+  document.getElementById('deleteConfirmBtn').onclick = () => confirmDelete(word);
+  $deleteOverlay.hidden = false;
+}
+
+function closeDeleteModal() { $deleteOverlay.hidden = true; }
+
+function confirmDelete(word) {
+  svc.deleteWord(word);
+  closeDeleteModal();
+  showToast('Word deleted');
+  render();
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'success') {
+  $toast.textContent = msg;
+  $toast.className = `toast toast--visible toast--${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2800);
+}
+
+boot();
+</script>
+</body>
+</html>
