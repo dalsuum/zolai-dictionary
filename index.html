@@ -9,21 +9,57 @@
   <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/main.css" />
   <style>
+    /* Loading screen */
+    .boot-screen {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 80vh; gap: 1.25rem;
+      text-align: center; padding: 2rem;
+    }
+    .boot-brand { font-family: var(--font-serif); font-size: 36px; color: var(--text); }
+    .boot-brand em { color: var(--accent); font-style: italic; }
+    .boot-status { font-size: 13px; color: var(--text-3); min-height: 20px; }
+    .boot-bar-wrap {
+      width: 220px; height: 4px; background: var(--border);
+      border-radius: 4px; overflow: hidden;
+    }
+    .boot-bar {
+      height: 100%; background: var(--accent);
+      border-radius: 4px; width: 0%;
+      transition: width 0.4s ease;
+    }
+    .boot-error {
+      background: var(--danger-bg); border: 1px solid #e8b0ab;
+      border-radius: var(--r); padding: 14px 18px;
+      color: var(--danger); font-size: 13px; max-width: 340px;
+    }
     /* Browse pagination */
-    .browse-nav{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
-    .browse-nav button{padding:4px 10px;font-size:12px;font-family:var(--font-sans);border:1px solid var(--border-2);border-radius:var(--r);background:var(--bg);color:var(--text-2);cursor:pointer}
-    .browse-nav button:hover,.browse-nav button.active{border-color:var(--accent);color:var(--accent)}
-    .browse-nav .page-info{font-size:12px;color:var(--text-3);margin-left:auto}
+    .browse-nav { display:flex; align-items:center; gap:5px; margin-top:10px; flex-wrap:wrap; }
+    .browse-nav button {
+      padding: 3px 8px; font-size: 11px; font-family: var(--font-sans);
+      border: 1px solid var(--border-2); border-radius: var(--r);
+      background: var(--bg); color: var(--text-2); cursor: pointer;
+    }
+    .browse-nav button:hover, .browse-nav button.active {
+      border-color: var(--accent); color: var(--accent);
+    }
+    .browse-nav .page-info { font-size: 11px; color: var(--text-3); margin-left: auto; }
     /* Image area */
-    .img-area{margin-bottom:12px}
-    .img-loading{display:flex;align-items:center;justify-content:center;gap:8px;
-      height:80px;border:1px dashed var(--border-2);border-radius:var(--r);
-      color:var(--text-3)}
-    .img-search-prompt{display:flex;flex-direction:column;align-items:flex-start;
-      gap:8px;padding:14px;background:var(--bg-2);border:1px solid var(--border);
-      border-radius:var(--r);margin-bottom:8px}
-    .img-actions{display:flex;align-items:center;gap:10px;margin-top:6px;
-      flex-wrap:wrap}
+    .img-area { margin-bottom: 12px; }
+    .img-loading {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; height: 72px; border: 1px dashed var(--border-2);
+      border-radius: var(--r); color: var(--text-3); font-size: 12px;
+    }
+    .img-actions {
+      display: flex; align-items: center; gap: 10px;
+      margin-top: 6px; flex-wrap: wrap; font-size: 12px;
+    }
+    .img-actions a { color: var(--accent); }
+    .img-search-prompt {
+      display: flex; flex-direction: column; align-items: flex-start;
+      gap: 8px; padding: 12px; background: var(--bg-2);
+      border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 8px;
+    }
   </style>
 </head>
 <body>
@@ -33,42 +69,42 @@
   <span class="nav-meta" id="navMeta">Tedim · English · မြန်မာ</span>
 </nav>
 
-<main class="container" id="app">
-  <p class="muted" style="padding:3rem 0;text-align:center">
-    <span class="spinner"></span>&ensp;Loading dictionary…
-  </p>
+<main id="app">
+  <!-- Loading screen — replaced by renderPage() on boot -->
+  <div class="boot-screen" id="bootScreen">
+    <div class="boot-brand">Zo<em>lai</em></div>
+    <div class="boot-bar-wrap"><div class="boot-bar" id="bootBar"></div></div>
+    <div class="boot-status" id="bootStatus">Starting up…</div>
+  </div>
 </main>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
-/**
- * index.html — Client entry point
- * Bugs fixed: 1,2,3,4,5,6,7,8,9,10,11,12,13,14
- */
 import { DictionaryService } from './app/dictionary.js';
 import { debounce, sanitize, parseSense, parseExam, truncate } from './app/utils.js';
 
 // ── POS palette ──────────────────────────────────────────────────────────────
 const POS_PAL = {
-  0:  {bg:'#E1F5EE',text:'#085041',bd:'#9FE1CB'},  // Noun
-  1:  {bg:'#E6F1FB',text:'#0C447C',bd:'#B5D4F4'},  // Verb
-  2:  {bg:'#FAEEDA',text:'#633806',bd:'#FAC775'},  // Adjective
-  3:  {bg:'#FAECE7',text:'#4A1B0C',bd:'#F5C4B3'},  // Adverb
-  4:  {bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},  // Preposition
-  5:  {bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},  // Conjunction
-  6:  {bg:'#EEEDFE',text:'#26215C',bd:'#CECBF6'},  // Pronoun
-  7:  {bg:'#FCEBEB',text:'#501313',bd:'#F7C1C1'},  // Interjection
-  19: {bg:'#EAF3DE',text:'#173404',bd:'#C0DD97'},  // Number
+  0:{bg:'#E1F5EE',text:'#085041',bd:'#9FE1CB'},
+  1:{bg:'#E6F1FB',text:'#0C447C',bd:'#B5D4F4'},
+  2:{bg:'#FAEEDA',text:'#633806',bd:'#FAC775'},
+  3:{bg:'#FAECE7',text:'#4A1B0C',bd:'#F5C4B3'},
+  4:{bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},
+  5:{bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},
+  6:{bg:'#EEEDFE',text:'#26215C',bd:'#CECBF6'},
+  7:{bg:'#FCEBEB',text:'#501313',bd:'#F7C1C1'},
+ 19:{bg:'#EAF3DE',text:'#173404',bd:'#C0DD97'},
 };
 const pal = id => POS_PAL[id] ?? POS_PAL[0];
 
-// ── State ────────────────────────────────────────────────────────────────────
-const svc = new DictionaryService();
-let selected   = null;
-let query      = '';
-let aiLoading  = false;
-let browsePage = 0;
+// ── State ─────────────────────────────────────────────────────────────────────
+const svc       = new DictionaryService();
+let selected    = null;
+let query       = '';
+let aiLoading   = false;
+let browsePage  = 0;
+let wikiCache   = {};
 const PAGE_SIZE = 80;
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
@@ -76,66 +112,71 @@ const $app   = document.getElementById('app');
 const $toast = document.getElementById('toast');
 let toastTimer;
 
+// ── Progress helpers ──────────────────────────────────────────────────────────
+function setProgress(msg, pct) {
+  const $bar    = document.getElementById('bootBar');
+  const $status = document.getElementById('bootStatus');
+  if ($bar)    $bar.style.width    = pct + '%';
+  if ($status) $status.textContent = msg;
+}
+
+function showBootError(msg) {
+  const $screen = document.getElementById('bootScreen');
+  if (!$screen) return;
+  $screen.innerHTML = `
+    <div class="boot-brand">Zo<em>lai</em></div>
+    <div class="boot-error">${sanitize(msg)}</div>
+    <button class="btn btn-primary" onclick="location.reload()">Retry</button>`;
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
   try {
-    // Phase 1 — load word list instantly, render browse grid
-    await svc.init(() => {
-      // Phase 2 callback — senses arrived, refresh list + detail
-      const $status = document.getElementById('sensesStatus');
-      if ($status) $status.remove();
-      if (query.trim()) renderList();   // re-run search with full senses
-      if (selected)     renderDetail(); // update detail with translations
-    });
-
+    await svc.init((msg, pct) => setProgress(msg, pct));
     document.getElementById('navMeta').textContent =
       `${svc.wordCount.toLocaleString()} words · Tedim · English · မြန်မာ`;
     renderPage();
-
   } catch (err) {
-    $app.innerHTML = `<p class="no-results" style="padding:3rem">
-      Failed to load: ${sanitize(err.message)}<br>
-      <small>Check your connection and refresh the page.</small>
-    </p>`;
+    showBootError(`Failed to load: ${err.message}`);
   }
 }
 
-// ── Page scaffold (rendered once) ────────────────────────────────────────────
+// ── Page scaffold ─────────────────────────────────────────────────────────────
 function renderPage() {
   const prefs = svc.getPrefs();
   $app.innerHTML = `
-    <div class="search-wrap">
-      <input class="search-input" id="searchInput" type="search"
-             placeholder="Search Zolai (Tedim), English, or Myanmar…"
-             value="${sanitize(query)}" autocomplete="off" aria-label="Search" />
-      <div class="search-meta">
-        <span class="muted" id="searchCount"></span>
-        <div class="toggle-row">
-          <label class="toggle" aria-label="Toggle images">
-            <input type="checkbox" id="imgToggle" ${prefs.showImages ? 'checked' : ''} />
-            <span class="toggle-track"></span>
-          </label>
-          <span class="toggle-label">Images</span>
+    <div class="container">
+      <div class="search-wrap">
+        <input class="search-input" id="searchInput" type="search"
+               placeholder="Search Zolai, English, or Myanmar…"
+               value="${sanitize(query)}" autocomplete="off" aria-label="Search" />
+        <div class="search-meta">
+          <span class="muted" id="searchCount"></span>
+          <div class="toggle-row">
+            <label class="toggle" aria-label="Toggle images">
+              <input type="checkbox" id="imgToggle" ${prefs.showImages ? 'checked' : ''} />
+              <span class="toggle-track"></span>
+            </label>
+            <span class="toggle-label">Images</span>
+          </div>
         </div>
       </div>
-      <div id="sensesStatus" style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--text-3)">
-        <span class="spinner"></span> Loading translations…
+      <div class="layout">
+        <div id="listPane"></div>
+        <div id="detailPane"></div>
       </div>
-    </div>
-    <div class="layout">
-      <div id="listPane"></div>
-      <div id="detailPane"></div>
     </div>`;
 
   document.getElementById('searchInput').addEventListener(
-    'input', debounce(e => { query = e.target.value; browsePage = 0; renderList(); renderDetail(); }, 200)
+    'input', debounce(e => { query = e.target.value; browsePage = 0; renderList(); }, 200)
   );
   document.getElementById('imgToggle').addEventListener('change', e => {
     svc.setPrefs({ showImages: e.target.checked });
-    renderDetail();
+    if (selected) renderDetail(selected);
   });
+
   renderList();
-  renderDetail();
+  renderDetail(null);
 }
 
 // ── List pane ─────────────────────────────────────────────────────────────────
@@ -144,7 +185,6 @@ function renderList() {
   if (!$list) return;
 
   if (query.trim()) {
-    // ── Search results ──
     const results = svc.search(query);
     document.getElementById('searchCount').textContent =
       `${results.length} result${results.length !== 1 ? 's' : ''}`;
@@ -153,35 +193,33 @@ function renderList() {
       $list.innerHTML = `<p class="no-results">No results for "<strong>${sanitize(query)}</strong>"</p>`;
       return;
     }
-    $list.innerHTML = `<div class="word-list">${results.slice(0, 200).map(r => wordCardHTML(r)).join('')}</div>`;
-
+    $list.innerHTML = `<div class="word-list">
+      ${results.slice(0, 200).map(r => wordCardHTML(r)).join('')}
+    </div>`;
   } else {
-    // ── Paginated browse (FIX BUG 7: not all 7861 at once) ──
     const all    = svc.allWords();
     const total  = all.length;
     const pages  = Math.ceil(total / PAGE_SIZE);
     const offset = browsePage * PAGE_SIZE;
     const slice  = all.slice(offset, offset + PAGE_SIZE);
 
-    document.getElementById('searchCount').textContent =
-      `${total.toLocaleString()} words`;
+    document.getElementById('searchCount').textContent = `${total.toLocaleString()} words`;
 
-    // Alphabet jump buttons (A–Z)
     const alpha = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(ch => {
       const idx = all.findIndex(w => w.word.toUpperCase().startsWith(ch));
       if (idx === -1) return '';
       const pg = Math.floor(idx / PAGE_SIZE);
-      return `<button onclick="jumpPage(${pg})">${ch}</button>`;
+      return `<button onclick="jumpPage(${pg})" ${browsePage===pg?'class="active"':''}>${ch}</button>`;
     }).join('');
 
     $list.innerHTML = `
       <p class="section-label-sm">Browse — page ${browsePage + 1} of ${pages}</p>
       <div class="browse-grid">${slice.map(w => chipHTML(w)).join('')}</div>
       <div class="browse-nav">
-        <button ${browsePage === 0 ? 'disabled' : ''} onclick="jumpPage(${browsePage - 1})">‹ Prev</button>
+        <button ${browsePage===0?'disabled':''} onclick="jumpPage(${browsePage-1})">‹</button>
         ${alpha}
-        <button ${browsePage >= pages - 1 ? 'disabled' : ''} onclick="jumpPage(${browsePage + 1})">Next ›</button>
-        <span class="page-info">${offset + 1}–${Math.min(offset + PAGE_SIZE, total)} of ${total.toLocaleString()}</span>
+        <button ${browsePage>=pages-1?'disabled':''} onclick="jumpPage(${browsePage+1})">›</button>
+        <span class="page-info">${offset+1}–${Math.min(offset+PAGE_SIZE,total)} of ${total.toLocaleString()}</span>
       </div>`;
   }
 
@@ -191,107 +229,40 @@ function renderList() {
   });
 }
 
-// ── Image keyword extraction ──────────────────────────────────────────────────
-// WHY extract keywords instead of using the Zolai word directly?
-//   "Topa", "mite", "khempeuh" mean nothing to any image service.
-//   The English definition contains the meaning — we extract 1-2 content words.
-const IMG_STOP = new Set([
-  'and','the','a','an','he','she','it','to','of','in','is','was','that',
-  'his','her','their','our','its','be','been','have','had','do','did',
-  'does','with','for','on','at','by','from','or','but','not','no','so',
-  'let','there','they','we','you','i','me','my','your','this','which',
-  'who','what','all','one','two','three','unto','them','him','up','out',
-  'down','shall','will','may','also','said','came','went','come','go',
-  'sat','lay','give','gave','take','took','make','made','see','saw',
-  'know','say','tell','told','call','begin','began','primary','general',
-  'common','used','refers','describes','expresses','context','term','word',
-  'see','note','freq','bible','source','book','verse','chapter'
-]);
+window.jumpPage = pg => { browsePage = pg; renderList(); };
 
-/**
- * Extract 1-2 clean English content words from a definition string.
- * Used as the Wikipedia / image search keyword.
- * @param {string} definition  English sense text
- * @returns {string}           e.g. "house" | "sacred cattle" | "morning"
- */
-function buildImageKeyword(definition) {
-  const clean = definition
-    .split(' — ')[0]          // drop notes after em-dash
-    .split('/')[0]            // take first option before slash
-    .replace(/[^a-zA-Z\s]/g, ' ')
-    .toLowerCase()
-    .trim();
-
-  const words = clean.split(/\s+/)
-    .filter(w => w.length > 2 && !IMG_STOP.has(w));
-
-  return words.slice(0, 2).join(' ') || 'culture';
-}
-
-// Cache for Wikipedia images: keyword → url|null
-const wikiImageCache = {};
-
-/**
- * Fetch the best thumbnail from Wikipedia for a keyword.
- * Free, no API key, CORS-enabled via origin=*.
- * Returns null if no image found.
- * @param {string} keyword
- * @returns {Promise<string|null>}
- */
-async function fetchWikiImage(keyword) {
-  if (keyword in wikiImageCache) return wikiImageCache[keyword];
-  try {
-    const url = `https://en.wikipedia.org/w/api.php?` +
-      `action=query&titles=${encodeURIComponent(keyword)}&prop=pageimages` +
-      `&format=json&pithumbsize=640&origin=*`;
-    const res  = await fetch(url);
-    const data = await res.json();
-    const page = Object.values(data?.query?.pages ?? {})[0];
-    const src  = page?.thumbnail?.source ?? null;
-    wikiImageCache[keyword] = src;
-    return src;
-  } catch {
-    wikiImageCache[keyword] = null;
-    return null;
-  }
-}
-
-// FIX BUG 7: exposed to window for inline onclick in browse nav
-window.jumpPage = function(pg) { browsePage = pg; renderList(); };
-  const en  = senses.find(s => s.wseq === 0);  // FIX BUG 14: wseq always number from memory
+function wordCardHTML({ word, senses }) {
+  const en  = senses.find(s => s.wseq === 0);
   const my  = senses.find(s => s.wseq === 1);
   const pos = svc.synset(en?.wrte ?? 0);
   const p   = pal(pos.id);
   const { definition } = parseSense(en?.sense ?? '');
-  // FIX BUG 10: truncate long Myanmar verse to word-level display
-  const myText = my ? truncate(my.sense, 50) : '';
-
-  return `<div class="word-card" data-word="${sanitize(word.word)}">
+  return `<div class="word-card${selected===word.word?' is-active':''}" data-word="${sanitize(word.word)}">
     <div class="wc-zolai">${sanitize(word.word)}</div>
-    <div class="wc-en">${sanitize(truncate(definition, 60))}</div>
-    ${myText ? `<div class="wc-my">${sanitize(myText)}</div>` : ''}
+    <div class="wc-en">${sanitize(truncate(definition, 55))}</div>
+    ${my ? `<div class="wc-my">${sanitize(truncate(my.sense, 45))}</div>` : ''}
     <div class="wc-foot"><span class="badge" style="background:${p.bg};color:${p.text};border-color:${p.bd}">${sanitize(pos.name)}</span></div>
   </div>`;
 }
 
 function chipHTML(word) {
-  const senses = svc.sensesFor(word.word);  // FIX BUG 8: O(1) Map lookup
+  const senses = svc.sensesFor(word.word);
   const en = senses.find(s => s.wseq === 0);
   const my = senses.find(s => s.wseq === 1);
   const { definition } = parseSense(en?.sense ?? '');
-  return `<div class="chip" data-word="${sanitize(word.word)}">
+  return `<div class="chip${selected===word.word?' is-active':''}" data-word="${sanitize(word.word)}">
     <span class="chip-z">${sanitize(word.word)}</span>
     <span class="chip-e">${sanitize(truncate(definition, 22))}</span>
     ${my ? `<span class="chip-m">${sanitize(truncate(my.sense, 20))}</span>` : ''}
   </div>`;
 }
 
-// ── Detail pane ───────────────────────────────────────────────────────────────
-async function renderDetail() {
+// ── Detail pane (synchronous render + async image fill) ───────────────────────
+function renderDetail(word) {
   const $d = document.getElementById('detailPane');
   if (!$d) return;
 
-  if (!selected) {
+  if (!word) {
     $d.innerHTML = `<div class="detail detail-empty">
       <div class="detail-empty-brand">Zo<em>lai</em></div>
       <span class="muted" style="font-size:13px">Select a word to view details</span>
@@ -299,39 +270,40 @@ async function renderDetail() {
     return;
   }
 
-  const senses = svc.sensesFor(selected);
+  const senses = svc.sensesFor(word);
   const en     = senses.find(s => s.wseq === 0);
   const my     = senses.find(s => s.wseq === 1);
-  if (!en) { $d.innerHTML = `<div class="detail"><p class="no-results">No entry found.</p></div>`; return; }
+  if (!en) {
+    $d.innerHTML = `<div class="detail"><p class="no-results">No entry found for "${sanitize(word)}".</p></div>`;
+    return;
+  }
 
-  const pos     = svc.synset(en.wrte);
-  const p       = pal(pos.id);
+  const pos   = svc.synset(en.wrte);
+  const p     = pal(pos.id);
   const { definition, notes } = parseSense(en.sense);
   const { zolai: exZ, translation: exT } = parseExam(en.exam);
-  const prefs   = svc.getPrefs();
-  const aiCache = svc.getAICache();
-  const ctx     = aiCache[selected];
+  const prefs = svc.getPrefs();
+  const ctx   = svc.getAICache()[word];
 
-  // Google Images search link (English keyword + Zolai cultural context)
-  const keyword  = buildImageKeyword(definition);
-  const gQuery   = encodeURIComponent(`${keyword} ${selected} Zomi Tedim`);
-  const gImgUrl  = `https://www.google.com/search?udm=2&q=${gQuery}`;
+  // Build search links
+  const keyword = buildImgKeyword(definition);
+  const gUrl    = `https://www.google.com/search?udm=2&q=${encodeURIComponent(keyword + ' ' + word + ' Zomi Tedim')}`;
 
-  // Render immediately with image loading placeholder
+  // Render synchronously — no awaits blocking the UI
   $d.innerHTML = `<div class="detail">
 
     ${prefs.showImages ? `
     <div class="img-area" id="imgArea">
       <div class="img-loading">
         <span class="spinner"></span>
-        <span style="font-size:12px;color:var(--text-3)">Loading image for "${sanitize(keyword)}"…</span>
+        <span>Searching for "${sanitize(keyword)}"…</span>
       </div>
     </div>` : ''}
 
-    <div class="detail-zolai">${sanitize(selected)}</div>
+    <div class="detail-zolai">${sanitize(word)}</div>
     <div class="detail-pos">
       <span class="badge" style="background:${p.bg};color:${p.text};border-color:${p.bd}">${sanitize(pos.name)}</span>
-      ${pos.shortname ? `<span style="font-size:11px;color:var(--text-3);margin-left:6px">${sanitize(pos.shortname)}</span>` : ''}
+      ${pos.shortname ? `<span style="font-size:11px;color:var(--text-3);margin-left:5px">${sanitize(pos.shortname)}</span>` : ''}
     </div>
 
     <div class="meanings">
@@ -358,100 +330,122 @@ async function renderDetail() {
 
     <div class="section">
       <button class="ai-btn" id="aiBtn">
-        ${aiLoading ? '<span class="spinner"></span> Loading…' : ctx ? '↻ Refresh context' : '✦ AI cultural context'}
+        ${aiLoading ? '<span class="spinner"></span> Loading…'
+          : ctx       ? '↻ Refresh context'
+          : '✦ AI cultural context'}
       </button>
       ${ctx ? `<div class="ai-context">${sanitize(ctx)}</div>` : ''}
     </div>
   </div>`;
 
-  document.getElementById('aiBtn')?.addEventListener('click', () => getAICtx(selected));
+  document.getElementById('aiBtn')?.addEventListener('click', () => getAICtx(word));
 
-  // Load Wikipedia image asynchronously — don't block the UI render
-  if (prefs.showImages) {
-    const $imgArea = document.getElementById('imgArea');
-    if ($imgArea) {
-      const imgSrc = await fetchWikiImage(keyword);
-      if (!$imgArea.isConnected) return;  // user may have navigated away
+  // Load image asynchronously — does NOT block render
+  if (prefs.showImages) loadImage(word, keyword, gUrl);
+}
 
-      if (imgSrc) {
-        $imgArea.innerHTML = `
-          <img src="${sanitize(imgSrc)}" alt="${sanitize(keyword)}"
-               style="width:100%;height:160px;object-fit:cover;border-radius:var(--r);display:block;margin-bottom:8px"
-               onerror="this.parentElement.innerHTML=noImgHTML('${sanitize(gImgUrl)}')" />
-          <div class="img-actions">
-            <span style="font-size:11px;color:var(--text-3)">📷 Wikipedia · "${sanitize(keyword)}"</span>
-            <a href="${gImgUrl}" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent);margin-left:auto">
-              More on Google Images
-            </a>
-          </div>`;
-      } else {
-        // No Wikipedia image — show a clean Google Images prompt
-        $imgArea.innerHTML = `
-          <div class="img-search-prompt">
-            <div style="font-size:13px;color:var(--text-2);margin-bottom:8px">
-              Image search: <strong>${sanitize(keyword)}</strong>
-            </div>
-            <a class="btn btn-secondary" style="font-size:12px;padding:6px 14px"
-               href="${gImgUrl}" target="_blank" rel="noopener">
-              🔍 Search Google Images
-            </a>
-          </div>`;
-      }
-    }
+// ── Image helpers ─────────────────────────────────────────────────────────────
+const IMG_STOP = new Set([
+  'and','the','a','an','he','she','it','to','of','in','is','was','that','his',
+  'her','their','our','its','be','been','have','had','do','did','does','with',
+  'for','on','at','by','from','or','but','not','no','so','let','unto','them',
+  'him','up','out','down','shall','will','may','also','said','came','went',
+  'come','go','sat','lay','give','gave','take','took','make','made','see','saw',
+  'know','say','tell','told','call','primary','general','common','used','refers',
+  'describes','expresses','context','term','word','freq','bible','source','book'
+]);
+
+function buildImgKeyword(definition) {
+  const clean = definition.split(' — ')[0].split('/')[0]
+    .replace(/[^a-zA-Z\s]/g, ' ').toLowerCase().trim();
+  const words = clean.split(/\s+/).filter(w => w.length > 2 && !IMG_STOP.has(w));
+  return words.slice(0, 2).join(' ') || 'Myanmar';
+}
+
+async function loadImage(word, keyword, gUrl) {
+  // Check cache first
+  if (wikiCache[keyword] !== undefined) {
+    fillImageArea(word, keyword, wikiCache[keyword], gUrl);
+    return;
+  }
+  try {
+    const url  = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(keyword)}&prop=pageimages&format=json&pithumbsize=640&origin=*`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    const page = Object.values(data?.query?.pages ?? {})[0];
+    wikiCache[keyword] = page?.thumbnail?.source ?? null;
+  } catch {
+    wikiCache[keyword] = null;
+  }
+  fillImageArea(word, keyword, wikiCache[keyword], gUrl);
+}
+
+function fillImageArea(word, keyword, src, gUrl) {
+  // Only update if user is still viewing the same word
+  if (selected !== word) return;
+  const $area = document.getElementById('imgArea');
+  if (!$area) return;
+
+  if (src) {
+    $area.innerHTML = `
+      <img src="${sanitize(src)}" alt="${sanitize(keyword)}"
+           style="width:100%;height:160px;object-fit:cover;border-radius:var(--r);display:block"
+           onerror="this.parentElement.innerHTML='<div class=img-search-prompt><span style=font-size:13px;color:var(--text-2)>No image available</span><a class=btn href=${sanitize(gUrl)} target=_blank rel=noopener style=font-size:12px>🔍 Google Images</a></div>'" />
+      <div class="img-actions">
+        <span style="font-size:11px;color:var(--text-3)">📷 Wikipedia · "${sanitize(keyword)}"</span>
+        <a href="${gUrl}" target="_blank" rel="noopener" style="margin-left:auto">More images</a>
+      </div>`;
+  } else {
+    $area.innerHTML = `
+      <div class="img-search-prompt">
+        <span style="font-size:13px;color:var(--text-2)">Image search: <strong>${sanitize(keyword)}</strong></span>
+        <a class="btn btn-secondary" href="${gUrl}" target="_blank" rel="noopener"
+           style="font-size:12px;padding:6px 14px">🔍 Search Google Images</a>
+      </div>`;
   }
 }
 
-// ── Actions ───────────────────────────────────────────────────────────────────
+// ── Interactions ──────────────────────────────────────────────────────────────
 function selectWord(word) {
   selected = word;
+  // Update active state on cards without re-rendering the whole list
   document.querySelectorAll('[data-word]').forEach(el =>
     el.classList.toggle('is-active', el.dataset.word === word)
   );
-  renderDetail();
+  renderDetail(word);
 }
 
-window.noImgHTML = (gUrl) =>
-  `<div class="img-search-prompt">
-    <div style="font-size:13px;color:var(--text-2);margin-bottom:8px">No image available</div>
-    <a class="btn btn-secondary" style="font-size:12px;padding:6px 14px"
-       href="${gUrl}" target="_blank" rel="noopener">🔍 Search Google Images</a>
-  </div>`;
-
-// FIX BUG 12: add anthropic-dangerous-direct-browser-access header
 async function getAICtx(word) {
   if (aiLoading) return;
   aiLoading = true;
-  renderDetail();
+  renderDetail(word);
   const cache = svc.getAICache();
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
+      method:  'POST',
       headers: {
         'Content-Type': 'application/json',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model:      'claude-sonnet-4-20250514',
         max_tokens: 300,
-        messages: [{
-          role: 'user',
-          content: `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin/Zomi) word "${word}". Be concise.`,
-        }],
+        messages:   [{ role:'user', content:`In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin/Zomi) word "${word}". Be concise.` }],
       }),
     });
-    const data = await res.json();
+    const data  = await res.json();
     cache[word] = data?.content?.[0]?.text ?? 'No context available.';
   } catch (err) {
     cache[word] = `Context unavailable: ${err.message}`;
   }
   svc.setAICache(cache);
   aiLoading = false;
-  renderDetail();
+  renderDetail(word);
 }
 
 function showToast(msg, type = 'success') {
-  $toast.textContent = msg;
-  $toast.className = `toast toast--visible toast--${type}`;
+  $toast.textContent   = msg;
+  $toast.className     = `toast toast--visible toast--${type}`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2800);
 }
