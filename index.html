@@ -470,12 +470,15 @@ function selectWord(word) {
 }
 
 // ── Gemini AI ────────────────────────────────────────────────────────────────
-// Model cascade: try newest → older, v1 → v1beta
-const GEMINI_MODELS = [
-  'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-  'https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent',
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
+// Model list — newest first. The cascade tries each until one succeeds.
+const GEMINI_ENDPOINTS = [
+  { url: 'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent',          label: 'gemini-2.0-flash (v1)'        },
+  { url: 'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-lite:generateContent',     label: 'gemini-2.0-flash-lite (v1)'    },
+  { url: 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',          label: 'gemini-1.5-flash (v1)'         },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',      label: 'gemini-2.0-flash (v1beta)'     },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',      label: 'gemini-1.5-flash (v1beta)'     },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent', label: 'gemini-1.5-flash-latest (v1beta)' },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',            label: 'gemini-pro (v1beta)'           },
 ];
 
 async function callGemini(key, prompt) {
@@ -483,18 +486,31 @@ async function callGemini(key, prompt) {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { maxOutputTokens: 150 }
   });
-  for (const endpoint of GEMINI_MODELS) {
+
+  const errors = [];
+  for (const { url, label } of GEMINI_ENDPOINTS) {
     try {
-      const res  = await fetch(`${endpoint}?key=${encodeURIComponent(key)}`, {
+      const res  = await fetch(`${url}?key=${encodeURIComponent(key)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body
       });
       const data = await res.json();
-      if (data.error) continue;  // try next model
+
+      // Success
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       if (text) return text;
-    } catch { continue; }
+
+      // API returned an error object — record it and try next
+      const msg = data?.error?.message ?? `No text in response`;
+      errors.push(`${label}: ${msg}`);
+    } catch (err) {
+      errors.push(`${label}: ${err.message}`);
+    }
   }
-  throw new Error('All Gemini models failed. Check your API key.');
+
+  // All failed — show the first real error so user knows what to fix
+  const firstReal = errors.find(e => !e.includes('not found') && !e.includes('not supported'))
+    ?? errors[0];
+  throw new Error(firstReal ?? 'All models failed. Check your API key at aistudio.google.com');
 }
 
 async function getGeminiCtx(word, definition) {
@@ -511,7 +527,7 @@ async function getGeminiCtx(word, definition) {
     const prompt = `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin / Zomi) word "${word}" meaning "${definition}". Be concise and factual.`;
     aiCache[word] = await callGemini(key, prompt);
   } catch (err) {
-    aiCache[word] = `Error: ${err.message}`;
+    aiCache[word] = `⚠ ${err.message}`;
   }
 
   aiLoading[word] = false;
