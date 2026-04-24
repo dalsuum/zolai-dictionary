@@ -416,6 +416,9 @@ function buildImgKeyword(definition) {
 async function loadImage(word, keyword, gUrl) {
   const cacheKey = keyword || '__nkw__';
 
+  // Cap cache size to prevent memory leak over long sessions
+  if (Object.keys(wikiCache).length > 200) wikiCache = {};
+
   if (wikiCache[cacheKey] !== undefined) {
     fillImage(word, keyword, wikiCache[cacheKey], gUrl); return;
   }
