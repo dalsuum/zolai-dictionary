@@ -9,18 +9,111 @@
   <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="stylesheet" href="assets/css/admin.css" />
+  <style>
+    /* ── Google Sign-In screen ── */
+    .signin-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 70vh;
+      gap: 1.25rem;
+      text-align: center;
+    }
+    .signin-logo {
+      font-family: var(--font-serif);
+      font-size: 36px;
+      color: var(--accent);
+    }
+    .signin-screen h2 {
+      font-family: var(--font-serif);
+      font-size: 22px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .signin-screen p {
+      font-size: 14px;
+      color: var(--text-2);
+      max-width: 320px;
+      line-height: 1.6;
+    }
+    /* Google button — matches Google's brand guidelines */
+    .btn-google {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 24px;
+      background: var(--bg);
+      border: 1px solid var(--border-2);
+      border-radius: var(--r);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    .btn-google:hover {
+      background: var(--bg-2);
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+    }
+    .btn-google svg { flex-shrink: 0; }
+    .signin-error {
+      font-size: 13px;
+      color: var(--danger);
+      background: var(--danger-bg);
+      border: 1px solid #e8b0ab;
+      border-radius: var(--r);
+      padding: 8px 16px;
+      max-width: 320px;
+    }
+    /* ── User chip in nav ── */
+    .nav-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .nav-user img {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border-2);
+    }
+    .nav-user-name {
+      font-size: 13px;
+      color: var(--text-2);
+      max-width: 160px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Loading state */
+    .auth-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      gap: 10px;
+      color: var(--text-3);
+      font-size: 14px;
+    }
+  </style>
 </head>
 <body>
 
-<h2 class="sr-only">Zolai Dictionary admin panel — manage word entries</h2>
-
-<nav class="nav" aria-label="Admin navigation">
+<nav class="nav" aria-label="Admin navigation" id="mainNav">
   <span class="nav-brand">Zo<em>lai</em></span>
   <span class="admin-badge">Admin</span>
   <a class="nav-back" href="index.html" style="margin-left:auto">← Dictionary</a>
 </nav>
 
-<main class="container" id="app"></main>
+<main class="container" id="app">
+  <div class="auth-loading">
+    <span class="spinner"></span> Checking authentication…
+  </div>
+</main>
 
 <!-- Edit / Add modal -->
 <div class="overlay" id="editOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
@@ -60,9 +153,9 @@
 </div>
 
 <!-- Delete confirm modal -->
-<div class="overlay" id="deleteOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+<div class="overlay" id="deleteOverlay" hidden role="dialog" aria-modal="true">
   <div class="modal" style="max-width:460px">
-    <h3 id="deleteTitle">Delete word</h3>
+    <h3>Delete word</h3>
     <div class="delete-msg" id="deleteMsg"></div>
     <div class="form-actions">
       <button class="btn btn-secondary" id="deleteCancelBtn">Cancel</button>
@@ -74,143 +167,166 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
-/**
- * admin.html — Admin entry point
- *
- * Architecture note:
- *   All data operations are delegated to DictionaryService (app/dictionary.js).
- *   This script is responsible only for:
- *     1. Auth gate (password check).
- *     2. Binding UI events to service calls.
- *     3. Re-rendering the table after mutations.
- *
- * Security note (Least Privilege):
- *   The admin password is a lightweight deterrent — it stops casual visitors.
- *   For production, replace this with server-side authentication.
- */
-
+import { AuthService }       from './app/auth.js';
 import { DictionaryService } from './app/dictionary.js';
 import { sanitize, parseSense } from './app/utils.js';
 
-// ─── POS colour palette ───────────────────────────────────────────────────────
-const POS_PALETTE = {
-  0:  { bg: '#E1F5EE', text: '#085041', bd: '#9FE1CB' },
-  1:  { bg: '#E6F1FB', text: '#0C447C', bd: '#B5D4F4' },
-  2:  { bg: '#FAEEDA', text: '#633806', bd: '#FAC775' },
-  3:  { bg: '#FAECE7', text: '#4A1B0C', bd: '#F5C4B3' },
-  4:  { bg: '#F1EFE8', text: '#2C2C2A', bd: '#D3D1C7' },
-  5:  { bg: '#F1EFE8', text: '#2C2C2A', bd: '#D3D1C7' },
-  6:  { bg: '#EEEDFE', text: '#26215C', bd: '#CECBF6' },
-  7:  { bg: '#FCEBEB', text: '#501313', bd: '#F7C1C1' },
-  19: { bg: '#EAF3DE', text: '#173404', bd: '#C0DD97' },
+// ── POS palette ──────────────────────────────────────────────────────────────
+const POS_PAL = {
+  0:{bg:'#E1F5EE',text:'#085041',bd:'#9FE1CB'},
+  1:{bg:'#E6F1FB',text:'#0C447C',bd:'#B5D4F4'},
+  2:{bg:'#FAEEDA',text:'#633806',bd:'#FAC775'},
+  3:{bg:'#FAECE7',text:'#4A1B0C',bd:'#F5C4B3'},
+  4:{bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},
+  5:{bg:'#F1EFE8',text:'#2C2C2A',bd:'#D3D1C7'},
+  6:{bg:'#EEEDFE',text:'#26215C',bd:'#CECBF6'},
+  7:{bg:'#FCEBEB',text:'#501313',bd:'#F7C1C1'},
+  19:{bg:'#EAF3DE',text:'#173404',bd:'#C0DD97'},
 };
+const pal = id => POS_PAL[id] ?? POS_PAL[0];
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-// Admin password is set via environment/config — not stored in source code.
-// To set: open browser console on this page and run:
-//   localStorage.setItem('zolai_admin_pw', 'your-password-here')
-// WHY: passwords must never be committed to version control.
-const ADMIN_PW = localStorage.getItem('zolai_admin_pw') ?? '';
+// ── Services ─────────────────────────────────────────────────────────────────
+const auth = new AuthService();
+const svc  = new DictionaryService();
 
-// ─── State ────────────────────────────────────────────────────────────────────
-const svc       = new DictionaryService();
-let authed      = false;
-let filterVal   = '';
-let editTarget  = null;   // null = adding new word; string = word being edited
-
-// ─── DOM refs ─────────────────────────────────────────────────────────────────
-const $app           = document.getElementById('app');
-const $editOverlay   = document.getElementById('editOverlay');
-const $deleteOverlay = document.getElementById('deleteOverlay');
-const $toast         = document.getElementById('toast');
+// ── State ─────────────────────────────────────────────────────────────────────
+let filterVal  = '';
+let editTarget = null;
 let toastTimer;
 
-// ─── Bootstrap ────────────────────────────────────────────────────────────────
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const $app          = document.getElementById('app');
+const $nav          = document.getElementById('mainNav');
+const $editOverlay  = document.getElementById('editOverlay');
+const $deleteOverlay= document.getElementById('deleteOverlay');
+const $toast        = document.getElementById('toast');
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   await svc.init();
   populatePosSelect();
-  render();
 
-  // Modal close buttons
-  document.getElementById('modalCancelBtn').addEventListener('click',  closeEditModal);
-  document.getElementById('deleteCancelBtn').addEventListener('click', closeDeleteModal);
-
-  // Save word
-  document.getElementById('modalSaveBtn').addEventListener('click', handleSave);
-
-  // Close overlays on backdrop click or Escape
-  [$editOverlay, $deleteOverlay].forEach(overlay => {
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.hidden = true; });
+  // Listen to auth state — renders correct screen whenever it changes
+  auth.onAuthChange(user => {
+    updateNav(user);
+    if (user) {
+      renderTable();
+    } else {
+      renderSignIn();
+    }
   });
+
+  // Modal close bindings
+  document.getElementById('modalCancelBtn') .addEventListener('click', closeEditModal);
+  document.getElementById('deleteCancelBtn').addEventListener('click', closeDeleteModal);
+  document.getElementById('modalSaveBtn')   .addEventListener('click', handleSave);
+
+  [$editOverlay, $deleteOverlay].forEach(o =>
+    o.addEventListener('click', e => { if (e.target === o) o.hidden = true; })
+  );
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { $editOverlay.hidden = true; $deleteOverlay.hidden = true; }
   });
 }
 
-// ─── Auth ─────────────────────────────────────────────────────────────────────
-function renderLock() {
-  $app.innerHTML = `
-    <div class="lock">
-      <div class="lock-icon">◆</div>
-      <h2>Admin access</h2>
-      <p>Enter the admin password to continue</p>
-      <input class="input" type="password" id="pwInput" placeholder="Password" autocomplete="current-password" />
-      <button class="btn btn-primary" id="loginBtn">Sign in</button>
-      <span class="lock-hint">Contact the site owner for access.</span>
-    </div>`;
+// ── Nav ───────────────────────────────────────────────────────────────────────
+function updateNav(user) {
+  // Remove previous user chip if any
+  $nav.querySelector('.nav-user')?.remove();
+  $nav.querySelector('.nav-back')?.remove();
 
-  const attempt = () => {
-    const val = document.getElementById('pwInput')?.value ?? '';
-    if (val === ADMIN_PW) { authed = true; render(); }
-    else {
-      const el = document.getElementById('pwInput');
-      if (el) { el.style.borderColor = '#c0392b'; el.value = ''; el.focus(); }
-      setTimeout(() => { const e2 = document.getElementById('pwInput'); if (e2) e2.style.borderColor = ''; }, 700);
-    }
-  };
+  const backLink = document.createElement('a');
+  backLink.className = 'nav-back';
+  backLink.href = 'index.html';
+  backLink.textContent = '← Dictionary';
 
-  document.getElementById('loginBtn').addEventListener('click', attempt);
-  document.getElementById('pwInput').addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
-  document.getElementById('pwInput').focus();
+  if (user) {
+    const chip = document.createElement('div');
+    chip.className = 'nav-user';
+    chip.innerHTML = `
+      ${user.photoURL ? `<img src="${sanitize(user.photoURL)}" alt="${sanitize(user.displayName)}" referrerpolicy="no-referrer" />` : ''}
+      <span class="nav-user-name">${sanitize(user.displayName || user.email)}</span>
+      <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" id="signOutBtn">Sign out</button>`;
+    $nav.appendChild(backLink);
+    $nav.appendChild(chip);
+    $nav.querySelector('#signOutBtn').addEventListener('click', () => auth.signOut());
+  } else {
+    $nav.appendChild(backLink);
+  }
 }
 
-// ─── Main table render ────────────────────────────────────────────────────────
-function render() {
-  if (!authed) { renderLock(); return; }
+// ── Sign-in screen ────────────────────────────────────────────────────────────
+function renderSignIn(errorMsg = '') {
+  $app.innerHTML = `
+    <div class="signin-screen">
+      <div class="signin-logo">◆</div>
+      <h2>Admin access</h2>
+      <p>Sign in with your authorized Google account to manage the dictionary.</p>
+      <button class="btn-google" id="googleSignInBtn">
+        <!-- Google "G" logo SVG -->
+        <svg width="18" height="18" viewBox="0 0 48 48">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          <path fill="none" d="M0 0h48v48H0z"/>
+        </svg>
+        Continue with Google
+      </button>
+      ${errorMsg ? `<div class="signin-error">${sanitize(errorMsg)}</div>` : ''}
+    </div>`;
 
+  document.getElementById('googleSignInBtn').addEventListener('click', handleSignIn);
+}
+
+async function handleSignIn() {
+  const btn = document.getElementById('googleSignInBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Signing in…`;
+  }
+  try {
+    await auth.signIn();
+    // onAuthChange fires automatically → renderTable() called there
+  } catch (err) {
+    renderSignIn(err.message);
+  }
+}
+
+// ── Admin table ───────────────────────────────────────────────────────────────
+function renderTable() {
   const all      = svc.allWords();
-  const flt      = filterVal.toLowerCase().trim();
-  const filtered = flt
+  const f        = filterVal.toLowerCase().trim();
+  const filtered = f
     ? all.filter(w => {
         const senses = svc.sensesFor(w.word);
-        return w.word.toLowerCase().includes(flt)
-          || senses.some(s => s.sense.toLowerCase().includes(flt));
+        return w.word.toLowerCase().includes(f)
+          || senses.some(s => s.sense.toLowerCase().includes(f));
       })
     : all;
 
   $app.innerHTML = `
     <div class="toolbar">
-      <h1>Dictionary management <span class="muted" style="font-size:14px;font-weight:400">${all.length} words</span></h1>
+      <h1>Dictionary management
+        <span class="muted" style="font-size:14px;font-weight:400">${all.length.toLocaleString()} words</span>
+      </h1>
       <div class="toolbar-right">
         <input class="input filter-input" type="search" id="filterInput"
                placeholder="Filter words…" value="${sanitize(filterVal)}"
                aria-label="Filter word list" />
         <button class="btn btn-primary" id="addBtn">+ Add word</button>
-        <button class="btn btn-secondary" id="signOutBtn">Sign out</button>
       </div>
     </div>
 
     <div class="table-wrap" role="region" aria-label="Word list">
       <table class="data-table">
-        <thead>
-          <tr>
-            <th class="col-word">Zolai</th>
-            <th class="col-en">English</th>
-            <th class="col-my">Myanmar</th>
-            <th class="col-pos">POS</th>
-            <th class="col-actions">Actions</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th class="col-word">Zolai</th>
+          <th class="col-en">English</th>
+          <th class="col-my">Myanmar</th>
+          <th class="col-pos">POS</th>
+          <th class="col-actions">Actions</th>
+        </tr></thead>
         <tbody>
           ${filtered.length === 0
             ? `<tr><td colspan="5" class="no-results">No words match your filter.</td></tr>`
@@ -220,10 +336,9 @@ function render() {
     </div>`;
 
   document.getElementById('filterInput').addEventListener('input', e => {
-    filterVal = e.target.value; render();
+    filterVal = e.target.value; renderTable();
   });
   document.getElementById('addBtn').addEventListener('click', openAddModal);
-  document.getElementById('signOutBtn').addEventListener('click', () => { authed = false; render(); });
 
   $app.querySelectorAll('[data-edit]').forEach(btn =>
     btn.addEventListener('click', () => openEditModal(btn.dataset.edit))
@@ -238,46 +353,38 @@ function rowHTML(word) {
   const en  = senses.find(s => s.wseq === 0);
   const my  = senses.find(s => s.wseq === 1);
   const pos = svc.synset(en?.wrte ?? 0);
-  const pal = POS_PALETTE[pos.id] ?? POS_PALETTE[0];
+  const p   = pal(pos.id);
   const { definition } = parseSense(en?.sense ?? '');
-
-  return `
-    <tr>
-      <td class="col-word">${sanitize(word.word)}</td>
-      <td class="col-en">${sanitize(definition)}</td>
-      <td class="col-my">${sanitize(my?.sense ?? '—')}</td>
-      <td class="col-pos">
-        <span class="badge" style="background:${pal.bg};color:${pal.text};border-color:${pal.bd}">
-          ${sanitize(pos.name)}
-        </span>
-      </td>
-      <td class="col-actions">
-        <div class="row-actions">
-          <button class="btn btn-secondary btn-sm" data-edit="${sanitize(word.word)}">Edit</button>
-          <button class="btn btn-danger    btn-sm" data-delete="${sanitize(word.word)}">Del</button>
-        </div>
-      </td>
-    </tr>`;
+  return `<tr>
+    <td class="col-word">${sanitize(word.word)}</td>
+    <td class="col-en">${sanitize(definition)}</td>
+    <td class="col-my">${sanitize(my?.sense?.slice(0,40) ?? '—')}</td>
+    <td class="col-pos"><span class="badge" style="background:${p.bg};color:${p.text};border-color:${p.bd}">${sanitize(pos.name)}</span></td>
+    <td class="col-actions"><div class="row-actions">
+      <button class="btn btn-secondary btn-sm" data-edit="${sanitize(word.word)}">Edit</button>
+      <button class="btn btn-danger    btn-sm" data-delete="${sanitize(word.word)}">Del</button>
+    </div></td>
+  </tr>`;
 }
 
-// ─── POS dropdown ─────────────────────────────────────────────────────────────
+// ── POS dropdown ──────────────────────────────────────────────────────────────
 function populatePosSelect() {
-  // Populate once; synset is available after svc.init()
   const $sel = document.getElementById('f-pos');
   svc.allSynsets().forEach(s => {
     const opt = document.createElement('option');
-    opt.value = s.id;
-    opt.textContent = s.name;
+    opt.value = s.id; opt.textContent = s.name;
     $sel.appendChild(opt);
   });
 }
 
-// ─── Edit modal ───────────────────────────────────────────────────────────────
+// ── Edit modal ────────────────────────────────────────────────────────────────
 function openAddModal() {
   editTarget = null;
   document.getElementById('modalTitle').textContent = 'Add word';
   document.getElementById('modalSaveBtn').textContent = 'Add word';
-  clearModalForm();
+  ['f-word','f-sense-en','f-sense-my','f-exam','f-notes'].forEach(id =>
+    document.getElementById(id).value = '');
+  document.getElementById('f-pos').selectedIndex = 0;
   $editOverlay.hidden = false;
   document.getElementById('f-word').focus();
 }
@@ -285,30 +392,22 @@ function openAddModal() {
 function openEditModal(word) {
   editTarget = word;
   const senses = svc.sensesFor(word);
-  const en     = senses.find(s => s.wseq === 0);
-  const my     = senses.find(s => s.wseq === 1);
+  const en = senses.find(s => s.wseq === 0);
+  const my = senses.find(s => s.wseq === 1);
   const { definition, notes } = parseSense(en?.sense ?? '');
-
-  document.getElementById('modalTitle').textContent = `Edit — ${word}`;
+  document.getElementById('modalTitle').textContent  = `Edit — ${word}`;
   document.getElementById('modalSaveBtn').textContent = 'Save changes';
-  document.getElementById('f-word').value    = word;
-  document.getElementById('f-pos').value     = en?.wrte ?? 0;
+  document.getElementById('f-word').value     = word;
+  document.getElementById('f-pos').value      = en?.wrte ?? 0;
   document.getElementById('f-sense-en').value = definition;
   document.getElementById('f-sense-my').value = my?.sense ?? '';
-  document.getElementById('f-exam').value    = en?.exam ?? '';
-  document.getElementById('f-notes').value   = notes;
+  document.getElementById('f-exam').value     = en?.exam ?? '';
+  document.getElementById('f-notes').value    = notes;
   $editOverlay.hidden = false;
   document.getElementById('f-word').focus();
 }
 
 function closeEditModal() { $editOverlay.hidden = true; }
-
-function clearModalForm() {
-  ['f-word','f-sense-en','f-sense-my','f-exam','f-notes'].forEach(id => {
-    document.getElementById(id).value = '';
-  });
-  document.getElementById('f-pos').selectedIndex = 0;
-}
 
 function handleSave() {
   const word    = document.getElementById('f-word').value.trim();
@@ -317,12 +416,8 @@ function handleSave() {
   const wrte    = parseInt(document.getElementById('f-pos').value, 10);
   const exam    = document.getElementById('f-exam').value.trim();
   const notes   = document.getElementById('f-notes').value.trim();
-
   if (!word || !senseEn) { showToast('Zolai word and English meaning are required.', 'error'); return; }
-
-  // Compose sense string: "definition — notes" (notes optional)
   const senseEnFull = notes ? `${senseEn} — ${notes}` : senseEn;
-
   try {
     if (editTarget) {
       svc.updateWord(editTarget, { word, wrte, senseEn: senseEnFull, senseMy, exam });
@@ -332,30 +427,27 @@ function handleSave() {
       showToast('Word added');
     }
     closeEditModal();
-    render();
+    renderTable();
   } catch (err) {
     showToast(err.message, 'error');
   }
 }
 
-// ─── Delete modal ─────────────────────────────────────────────────────────────
+// ── Delete modal ──────────────────────────────────────────────────────────────
 function openDeleteModal(word) {
   document.getElementById('deleteMsg').innerHTML =
     `Delete <strong>"${sanitize(word)}"</strong>? This cannot be undone.`;
-  document.getElementById('deleteConfirmBtn').onclick = () => confirmDelete(word);
+  document.getElementById('deleteConfirmBtn').onclick = () => {
+    svc.deleteWord(word);
+    $deleteOverlay.hidden = true;
+    showToast('Word deleted');
+    renderTable();
+  };
   $deleteOverlay.hidden = false;
 }
-
 function closeDeleteModal() { $deleteOverlay.hidden = true; }
 
-function confirmDelete(word) {
-  svc.deleteWord(word);
-  closeDeleteModal();
-  showToast('Word deleted');
-  render();
-}
-
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────────────────────────
 function showToast(msg, type = 'success') {
   $toast.textContent = msg;
   $toast.className = `toast toast--visible toast--${type}`;
