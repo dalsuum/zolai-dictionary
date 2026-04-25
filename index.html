@@ -5,6 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="Zolai (Tedim Chin / Zomi) trilingual dictionary — Zolai, English and Myanmar translations." />
   <title>Zolai Dictionary — Tedim · English · မြန်မာ</title>
+  <!-- Google Analytics GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-8V1ZP81ZVT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-8V1ZP81ZVT', {
+      // Enable Google Signals for demographics (age, gender, interests)
+      allow_google_signals: true,
+      // Enable ad personalisation signals
+      allow_ad_personalization_signals: true,
+      // Send page_view automatically
+      send_page_view: true,
+    });
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/main.css" />
@@ -114,6 +129,11 @@ function showBootError(msg) {
     <button class="btn btn-primary" onclick="location.reload()">Retry</button>`;
 }
 
+// ── Analytics helpers ─────────────────────────────────────────────────────────
+function gaEvent(name, params = {}) {
+  if (typeof gtag !== 'undefined') gtag('event', name, params);
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   try {
@@ -170,7 +190,19 @@ function renderPage() {
 
   // Search
   document.getElementById('searchInput').addEventListener(
-    'input', debounce(e => { query = e.target.value; browsePage = 0; renderList(); }, 200)
+    'input', debounce(e => {
+      query = e.target.value; browsePage = 0; renderList();
+      // Track search — fires 300ms after user stops typing
+      if (query.trim().length >= 2) {
+        gaEvent('search', {
+          search_term: query.trim(),
+          // Detect which language was searched
+          search_language: /[\u1000-\u109F]/.test(query) ? 'myanmar'
+                         : /^[a-zA-Z\s]+$/.test(query)   ? 'english_or_zolai'
+                         : 'mixed',
+        });
+      }
+    }, 200)
   );
   // Images toggle
   document.getElementById('imgToggle').addEventListener('change', e => {
@@ -470,6 +502,11 @@ function selectWord(word) {
     el.classList.toggle('is-active', el.dataset.word === word)
   );
   renderDetail(word);
+  // Track word view
+  gaEvent('view_word', {
+    word:         word,
+    search_query: query.trim() || '(browse)',
+  });
 }
 
 // ── Gemini AI ────────────────────────────────────────────────────────────────
@@ -520,6 +557,9 @@ async function getGeminiCtx(word, definition) {
   const key = localStorage.getItem('gemini_api_key');
   if (!key) { showToast('Add your Gemini key in ⚙️ Settings first', 'error'); return; }
   if (aiLoading[word]) return;
+
+  // Track AI context request
+  gaEvent('ai_context_request', { word });
 
   aiLoading[word] = true;
   const $btn = document.getElementById('aiBtn');
