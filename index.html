@@ -521,7 +521,7 @@ async function callAI(prompt) {
   // For Tencent Hy3 reasoning models, disable reasoning to avoid burning
   // the token budget on internal thinking that we discard anyway
   if (model.includes('hy3') || model.includes('hunyuan')) {
-    body.reasoning = { effort: 'disabled' };
+    body.reasoning = { effort: 'none' };
   }
 
   const res = await fetch(OPENROUTER_URL, {
