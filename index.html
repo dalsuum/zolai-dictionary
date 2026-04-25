@@ -173,7 +173,7 @@ function renderPage() {
     <div class="container">
       <div class="search-wrap">
         <input class="search-input" id="searchInput" type="search"
-               placeholder="Search Zolai, English, or Myanmar…"
+               placeholder="Search Zolai, English, or Myanmar — multiple words OK"
                value="${sanitize(query)}" autocomplete="off" aria-label="Search" />
         <div class="search-meta">
           <span class="muted" id="searchCount"></span>
@@ -222,9 +222,23 @@ function renderPage() {
 function hl(text, q) {
   const safe = sanitize(text ?? '');
   if (!q || !q.trim()) return safe;
+
+  // Split query into terms (respecting "quoted phrases")
+  const terms = [];
+  const re = /"([^"]+)"|(\S+)/g;
+  let m;
+  while ((m = re.exec(q)) !== null) {
+    const t = (m[1] ?? m[2]).trim();
+    if (t) terms.push(t);
+  }
+  if (!terms.length) return safe;
+
+  // Build a single combined regex so highlights don't overlap
   try {
-    const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return safe.replace(new RegExp(`(${esc})`, 'gi'), '<mark>$1</mark>');
+    const escaped = terms
+      .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+    return safe.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
   } catch { return safe; }
 }
 

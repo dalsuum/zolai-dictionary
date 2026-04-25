@@ -221,83 +221,137 @@ export class DictionaryService {
   /**
    * Ranked search — Zolai ↔ English ↔ Myanmar (bidirectional).
    *
-   * Score tiers:
-   *   100 — exact headword match
-   *    75 — headword starts with query
-   *    50 — headword contains query
-   *    40 — English exam word-boundary match  (requires query ≥ 3 chars)
-   *    30 — English sense word-boundary match (requires query ≥ 3 chars)
-   *    20 — Myanmar sense match               (requires query ≥ 2 chars)
-   *    15 — English exam substring            (requires query ≥ 4 chars)
-   *    10 — English sense substring           (requires query ≥ 3 chars)
+   * Multi-word query handling:
+   *   "compassion debt"  → ALL terms must be found somewhere in the entry
+   *                         (Zolai word, English sense, or English exam).
+   *                         Word's score = sum of each term's score.
+   *   "house dwelling"   → finds Inn (sense matches both terms)
+   *   "leiba debt"       → finds leiba (Zolai matches first, exam matches second)
    *
-   * WHY minimum lengths?
-   *   Short queries like "la" appear in thousands of Bible verse exam fields.
-   *   Without a minimum, "la" returns 2,591 results (noise from exam scanning).
-   *   Headword matching has no minimum — "La" (song) should still be found.
+   *   Each term is independently scored by these tiers:
+   *     100 — exact headword match
+   *      75 — headword starts with term
+   *      50 — headword contains term
+   *      40 — English exam word-boundary match  (term ≥ 5 chars)
+   *      35 — English sense starts with term    (term ≥ 3 chars)
+   *      30 — English sense word-boundary match (term ≥ 3 chars)
+   *      20 — Myanmar sense match               (term ≥ 2 chars)
+   *      15 — English exam substring            (term ≥ 5 chars)
+   *      10 — English sense substring           (term ≥ 3 chars)
+   *
+   *   Quoted phrases ("of god") match as a single unit.
+   *
+   * @param {string} query  user input (possibly multiple words)
+   * @returns {Array<{word, senses}>}  results sorted by total score
    */
   search(query) {
-    const q    = normalise(query);
-    const qRaw = (query ?? '').trim();
-    if (!q) return [];
+    const raw = (query ?? '').trim();
+    if (!raw) return [];
 
-    const qLen    = q.length;
-    const isAscii = /^[a-z0-9 ]+$/.test(q);
-    let wordBoundaryRe = null;
-    if (isAscii && qLen >= 3) {
-      try {
-        wordBoundaryRe = new RegExp(
-          `(?<![a-z])${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z])`
-        );
-      } catch { /* invalid regex — skip */ }
-    }
+    // Tokenize: respect quoted phrases as single terms
+    const terms = this._tokenizeQuery(raw);
+    if (terms.length === 0) return [];
 
     const scores = new Map();
 
+    // Iterate every word once, score against EVERY term
     for (const [word, rows] of this._senseMap) {
-      const nw = normalise(word);
-      if      (nw === q)         { scores.set(word, 100); continue; }
-      else if (nw.startsWith(q)) { scores.set(word, 75);  continue; }
-      else if (nw.includes(q))   { scores.set(word, 50);  continue; }
+      const nw       = normalise(word);
+      const nsList   = rows.filter(s => s.wseq === 0).map(s => normalise(s.sense));
+      const examList = rows.filter(s => s.wseq === 0).map(s => normalise(s.exam ?? ''));
+      const myList   = rows.filter(s => s.wseq === 1).map(s => s.sense);
+      const myNormList = myList.map(s => normalise(s));
 
-      // Only scan sense/exam for queries ≥ 3 chars to avoid noise
-      if (qLen < 3) continue;
+      let totalScore  = 0;
+      let allTermsHit = true;
 
-      let best = 0;
-      for (const s of rows) {
-        if (s.wseq === 0) {
-          const ns   = normalise(s.sense);
-          const exam = qLen >= 3 ? normalise(s.exam ?? '') : '';
-
-          // Sense matching (≥ 3 chars)
-          if (wordBoundaryRe?.test(ns)) {
-            // Score 35 if sense STARTS with query — likely the primary definition
-            // e.g. "house / home — Primary dwelling" starts with "house" → Inn ranks first
-            const startsWithQ = ns.startsWith(q + ' ') || ns.startsWith(q + '/') || ns === q;
-            best = Math.max(best, startsWithQ ? 35 : 30);
-          } else if (ns.includes(q)) {
-            best = Math.max(best, 10);
-          }
-
-          // Exam matching — requires ≥ 5 chars to avoid common English words
-          // ("house", "water", "song" appear in hundreds of Bible verses)
-          if (qLen >= 5) {
-            if (wordBoundaryRe?.test(exam)) best = Math.max(best, 40);
-            else if (exam.includes(q))      best = Math.max(best, 15);
-          }
-        } else if (s.wseq === 1 && qLen >= 2) {
-          if (s.sense.includes(qRaw) || normalise(s.sense).includes(q)) {
-            best = Math.max(best, 20);
-          }
-        }
+      for (const term of terms) {
+        const tScore = this._scoreSingleTerm(term, nw, nsList, examList, myList, myNormList);
+        if (tScore === 0) { allTermsHit = false; break; }
+        totalScore += tScore;
       }
-      if (best > 0) scores.set(word, best);
+
+      // Only return words where EVERY search term matched somewhere (AND semantics)
+      if (allTermsHit && totalScore > 0) scores.set(word, totalScore);
     }
 
     return [...scores.entries()]
       .sort(([wa, sa], [wb, sb]) => sb !== sa ? sb - sa : wa.localeCompare(wb))
       .filter(([w]) => this._wordMap.has(w))
       .map(([w]) => ({ word: this._wordMap.get(w), senses: this.sensesFor(w) }));
+  }
+
+  /**
+   * Split query into search terms.
+   * - "house dwelling"    → ["house", "dwelling"]
+   * - '"of god" wisdom'   → ["of god", "wisdom"]   (quoted phrase preserved)
+   * - "  multiple   spaces" → ["multiple", "spaces"]
+   */
+  _tokenizeQuery(query) {
+    const terms = [];
+    const re = /"([^"]+)"|(\S+)/g;
+    let m;
+    while ((m = re.exec(query)) !== null) {
+      const term = (m[1] ?? m[2]).trim();
+      if (term) terms.push(term);
+    }
+    return terms;
+  }
+
+  /**
+   * Score one term against one word's data.
+   * @returns {number} 0 if no match, otherwise the best tier score
+   */
+  _scoreSingleTerm(term, nw, nsList, examList, myList, myNormList) {
+    const t    = normalise(term);
+    const tRaw = term.trim();
+    const tLen = t.length;
+    if (!t) return 0;
+
+    // Headword tiers (always scanned, no minimum length)
+    if (nw === t)            return 100;
+    if (nw.startsWith(t))    return 75;
+    if (nw.includes(t))      return 50;
+
+    // Sense/exam tiers (require minimum length to avoid noise)
+    if (tLen < 2) return 0;
+
+    // Build word-boundary regex once per term (only for ASCII, length ≥ 3)
+    let wbr = null;
+    const isAscii = /^[a-z0-9 ]+$/.test(t);
+    if (isAscii && tLen >= 3) {
+      try {
+        wbr = new RegExp(
+          `(?<![a-z])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z])`
+        );
+      } catch { /* skip */ }
+    }
+
+    let best = 0;
+    if (tLen >= 3) {
+      for (const ns of nsList) {
+        if (wbr?.test(ns)) {
+          const startsWithT = ns.startsWith(t + ' ') || ns.startsWith(t + '/') || ns === t;
+          best = Math.max(best, startsWithT ? 35 : 30);
+        } else if (ns.includes(t)) {
+          best = Math.max(best, 10);
+        }
+      }
+      if (tLen >= 5) {
+        for (const exam of examList) {
+          if (wbr?.test(exam))      best = Math.max(best, 40);
+          else if (exam.includes(t)) best = Math.max(best, 15);
+        }
+      }
+    }
+    if (tLen >= 2) {
+      for (let i = 0; i < myList.length; i++) {
+        if (myList[i].includes(tRaw) || myNormList[i].includes(t)) {
+          best = Math.max(best, 20);
+        }
+      }
+    }
+    return best;
   }
 
   // ── Write (persist to IDB after each mutation) ────────────────────────────
