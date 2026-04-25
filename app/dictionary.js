@@ -301,6 +301,21 @@ export class DictionaryService {
   /**
    * Score one term against one word's data.
    * @returns {number} 0 if no match, otherwise the best tier score
+   *
+   * Score tiers (higher = better):
+   *   100 — exact headword match
+   *    90 — primary sense IS the query (e.g. "God" → Pasian whose sense="God")
+   *    75 — headword starts with term
+   *    65 — primary sense STARTS with term (English definition)
+   *    60 — Myanmar sense IS the query exactly
+   *    55 — Myanmar sense STARTS with term
+   *    50 — headword contains term
+   *    40 — exam (verse) word-boundary match (term ≥ 5 chars)
+   *    35 — sense word-boundary match
+   *    30 — Myanmar sense contains term
+   *    20 — sense substring
+   *    15 — exam substring (term ≥ 5 chars)
+   *    10 — Myanmar sense substring
    */
   _scoreSingleTerm(term, nw, nsList, examList, myList, myNormList) {
     const t    = normalise(term);
@@ -308,49 +323,96 @@ export class DictionaryService {
     const tLen = t.length;
     if (!t) return 0;
 
-    // Headword tiers (always scanned, no minimum length)
+    // ── Headword tier (always scanned, no minimum length) ────────────────────
     if (nw === t)            return 100;
     if (nw.startsWith(t))    return 75;
     if (nw.includes(t))      return 50;
 
-    // Sense/exam tiers (require minimum length to avoid noise)
     if (tLen < 2) return 0;
 
-    // Build word-boundary regex once per term (only for ASCII, length ≥ 3)
+    // Build word-boundary regex for ASCII queries ≥ 3 chars
     let wbr = null;
     const isAscii = /^[a-z0-9 ]+$/.test(t);
     if (isAscii && tLen >= 3) {
       try {
-        wbr = new RegExp(
-          `(?<![a-z])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z])`
-        );
+        wbr = new RegExp(`(?<![a-z])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z])`);
       } catch { /* skip */ }
     }
 
     let best = 0;
-    if (tLen >= 3) {
-      for (const ns of nsList) {
-        if (wbr?.test(ns)) {
-          const startsWithT = ns.startsWith(t + ' ') || ns.startsWith(t + '/') || ns === t;
-          best = Math.max(best, startsWithT ? 35 : 30);
-        } else if (ns.includes(t)) {
-          best = Math.max(best, 10);
-        }
-      }
-      if (tLen >= 5) {
-        for (const exam of examList) {
-          if (wbr?.test(exam))      best = Math.max(best, 40);
-          else if (exam.includes(t)) best = Math.max(best, 15);
-        }
-      }
-    }
+
+    // ── English sense tiers ──────────────────────────────────────────────────
+    // The "primary sense" is the FIRST part before " — " (em-dash separator).
+    // e.g. "God — Supreme being..."  → primary sense = "God"
+    //      "House / home — Primary dwelling word"  → primary sense = "House / home"
+    //
+    // CRITICAL: only short sense strings (≤ 5 words) are real dictionary
+    // definitions. Long ones are Bible verse fragments — matching individual
+    // words inside them must NOT score as if the word IS the definition.
     if (tLen >= 2) {
-      for (let i = 0; i < myList.length; i++) {
-        if (myList[i].includes(tRaw) || myNormList[i].includes(t)) {
+      for (const ns of nsList) {
+        const primary      = ns.split(' — ')[0].trim();
+        const primaryWords = primary.split(/[,/\s]+/).map(w => w.trim()).filter(Boolean);
+        const isRealDef    = primaryWords.length <= 5;   // ← key fix
+
+        // Tier 90: primary sense IS the query (only counts for real definitions)
+        // e.g. "god" matches Pasian (sense="god — supreme being"); does NOT
+        // match a verse fragment "...the judgment of God is..."
+        if (isRealDef && (primary === t || primaryWords.includes(t))) {
+          best = Math.max(best, 90);
+          continue;
+        }
+        // Tier 65: primary sense starts with the query (real defs only)
+        if (isRealDef && (primary.startsWith(t + ' ') || primary.startsWith(t + '/'))) {
+          best = Math.max(best, 65);
+          continue;
+        }
+        // Tier 35: word-boundary match in full sense
+        if (wbr?.test(ns)) {
+          best = Math.max(best, 35);
+        } else if (tLen >= 3 && ns.includes(t)) {
           best = Math.max(best, 20);
         }
       }
     }
+
+    // ── Myanmar sense tiers ──────────────────────────────────────────────────
+    if (tLen >= 1) {
+      for (let i = 0; i < myList.length; i++) {
+        const my       = myList[i];
+        const myNorm   = myNormList[i];
+        const primary  = my.split(' — ')[0].trim();
+        const myWords  = primary.split(/\s*\/\s*|\s+/).filter(Boolean);
+        // Same guard: Myanmar verse fragments are long; real defs are 1-3 tokens
+        const isRealDef = myWords.length <= 3 && primary.length <= 30;
+
+        // Tier 60: Myanmar primary sense IS the query (real defs only)
+        if (isRealDef && (primary === tRaw || myWords.includes(tRaw))) {
+          best = Math.max(best, 60);
+          continue;
+        }
+        // Tier 55: Myanmar primary starts with the query (real defs only)
+        if (isRealDef && primary.startsWith(tRaw)) {
+          best = Math.max(best, 55);
+          continue;
+        }
+        // Tier 30: Myanmar sense contains the query
+        if (my.includes(tRaw) || myNorm.includes(t)) {
+          best = Math.max(best, 30);
+        }
+      }
+    }
+
+    // ── Exam (Bible verse) tiers — lowest priority ──────────────────────────
+    // We deliberately rank this LOW so verse fragments don't outrank
+    // real definitions. Requires ≥ 5 chars to avoid common-word noise.
+    if (tLen >= 5) {
+      for (const exam of examList) {
+        if (wbr?.test(exam))      best = Math.max(best, 40);
+        else if (exam.includes(t)) best = Math.max(best, 15);
+      }
+    }
+
     return best;
   }
 
