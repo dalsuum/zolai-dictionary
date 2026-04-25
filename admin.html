@@ -387,7 +387,7 @@ function renderTable() {
 
   // Load saved settings
   const savedGA  = localStorage.getItem('ga_measurement_id') || 'G-8V1ZP81ZVT';
-  const savedKey = localStorage.getItem('gemini_api_key')    || '';
+  const savedKey = localStorage.getItem('ai_api_key') || '';
 
   $app.innerHTML = `
 
@@ -413,20 +413,29 @@ function renderTable() {
           </span>
         </div>
 
-        <!-- Gemini AI -->
+        <!-- OpenRouter AI -->
         <div class="settings-field">
-          <label>Gemini AI API Key (free)</label>
+          <label>OpenRouter API Key (free)</label>
           <div class="settings-field-row">
-            <input id="geminiKeyInput" type="password"
-                   placeholder="AIzaSy…"
+            <input id="aiKeyInput" type="password"
+                   placeholder="sk-or-v1-…"
                    value="${sanitize(savedKey)}" autocomplete="off" />
             <button class="btn btn-secondary" style="font-size:12px;padding:6px 10px;white-space:nowrap"
-                    onclick="saveGeminiKey()">Save</button>
+                    onclick="saveAIKey()">Save</button>
+          </div>
+          <div class="settings-field-row" style="margin-top:6px">
+            <span style="font-size:11px;color:var(--text-3);white-space:nowrap">Model</span>
+            <input id="aiModelInput" type="text"
+                   placeholder="meta-llama/llama-3.1-8b-instruct:free"
+                   value="${sanitize(localStorage.getItem('ai_model') || 'meta-llama/llama-3.1-8b-instruct:free')}"
+                   style="flex:1;padding:6px 10px;font-size:12px;font-family:var(--font-sans);border:1px solid var(--border-2);border-radius:var(--r);background:var(--bg);color:var(--text);outline:none" />
           </div>
           <span class="field-hint">
-            Free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a>
-            — no credit card needed. Stored in browser only.
-            <span class="settings-saved" id="geminiSaved">✓ Saved</span>
+            Free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>
+            — $1 free credit, 100+ models, no card needed.<br>
+            Free models: <code>meta-llama/llama-3.1-8b-instruct:free</code>,
+            <code>google/gemini-2.0-flash-exp:free</code>
+            <span class="settings-saved" id="aiKeySaved">✓ Saved</span>
           </span>
         </div>
 
@@ -593,16 +602,19 @@ window.saveGaId = function() {
   showToast('GA Measurement ID saved ✓');
 };
 
-window.saveGeminiKey = function() {
-  const val = document.getElementById('geminiKeyInput')?.value.trim();
-  if (val) {
-    localStorage.setItem('gemini_api_key', val);
-    const $saved = document.getElementById('geminiSaved');
+window.saveAIKey = function() {
+  const key   = document.getElementById('aiKeyInput')?.value.trim();
+  const model = document.getElementById('aiModelInput')?.value.trim();
+  if (key) {
+    localStorage.setItem('ai_api_key', key);
+    if (model) localStorage.setItem('ai_model', model);
+    const $saved = document.getElementById('aiKeySaved');
     if ($saved) { $saved.classList.add('show'); setTimeout(() => $saved.classList.remove('show'), 3000); }
-    showToast('Gemini key saved ✓');
+    showToast('OpenRouter key saved ✓');
   } else {
-    localStorage.removeItem('gemini_api_key');
-    showToast('Gemini key cleared');
+    localStorage.removeItem('ai_api_key');
+    localStorage.removeItem('ai_model');
+    showToast('AI key cleared');
   }
 };
 

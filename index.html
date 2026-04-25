@@ -295,7 +295,7 @@ function renderDetail(word) {
   const { definition, notes } = parseSense(en.sense);
   const { zolai: exZ, translation: exT } = parseExam(en.exam);
   const prefs = svc.getPrefs();
-  const hasKey = !!localStorage.getItem('gemini_api_key');
+  const hasKey = !!localStorage.getItem('ai_api_key');
   const q = query.trim();  // current search query for highlighting
 
   // Image keyword — extract from definition, fallback to word
@@ -353,7 +353,7 @@ function renderDetail(word) {
   </div>`;
 
   // Wire AI button
-  document.getElementById('aiBtn')?.addEventListener('click', () => getGeminiCtx(word, definition));
+  document.getElementById('aiBtn')?.addEventListener('click', () => getAICtx(word, definition));
 
   // Load image async (non-blocking)
   if (prefs.showImages) loadImage(word, keyword, gUrl);
@@ -466,69 +466,60 @@ function selectWord(word) {
   });
 }
 
-// ── Gemini AI ────────────────────────────────────────────────────────────────
-// Model cascade — newest/most available first.
-// WHY a cascade? Google changes model availability without notice.
-// We try each until one succeeds rather than hard-coding one model.
-const GEMINI_ENDPOINTS = [
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent',     label: 'gemini-2.0-flash-lite'    },
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent', label: 'gemini-2.5-flash-preview' },
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',   label: 'gemini-1.5-flash-latest'  },
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',          label: 'gemini-1.5-flash'         },
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent',       label: 'gemini-1.5-flash-8b'      },
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',                label: 'gemini-pro'               },
-];
+// ── AI context — powered by OpenRouter ───────────────────────────────────────
+// OpenRouter: free $1 credit, 100+ models, OpenAI-compatible API.
+// Get free key at https://openrouter.ai/keys
+// Recommended free models (set in Admin → Site settings):
+//   meta-llama/llama-3.1-8b-instruct:free
+//   google/gemini-2.0-flash-exp:free
+//   mistralai/mistral-7b-instruct:free
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_MODEL  = 'meta-llama/llama-3.1-8b-instruct:free';
 
-async function callGemini(key, prompt) {
-  const body = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { maxOutputTokens: 150 }
+async function callAI(prompt) {
+  const key   = localStorage.getItem('ai_api_key');
+  const model = localStorage.getItem('ai_model') || DEFAULT_MODEL;
+  if (!key) throw new Error('NO_KEY');
+
+  const res = await fetch(OPENROUTER_URL, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${key}`,
+      'HTTP-Referer':  'https://zolai-dictionary.web.app',
+      'X-Title':       'Zolai Dictionary',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 150,
+    }),
   });
 
-  const errors = [];
-  for (const { url, label } of GEMINI_ENDPOINTS) {
-    try {
-      const res  = await fetch(`${url}?key=${encodeURIComponent(key)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body
-      });
-      const data = await res.json();
-
-      // Success
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-      if (text) return text;
-
-      // API returned an error object — record it and try next
-      const msg = data?.error?.message ?? `No text in response`;
-      errors.push(`${label}: ${msg}`);
-    } catch (err) {
-      errors.push(`${label}: ${err.message}`);
-    }
-  }
-
-  // All failed — show the first real error so user knows what to fix
-  const firstReal = errors.find(e => !e.includes('not found') && !e.includes('not supported'))
-    ?? errors[0];
-  throw new Error(firstReal ?? 'All models failed. Check your API key at aistudio.google.com');
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message ?? 'OpenRouter error');
+  const text = data?.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error('No response from model');
+  return text;
 }
 
-async function getGeminiCtx(word, definition) {
-  const key = localStorage.getItem('gemini_api_key');
-  if (!key) { showToast('Add your Gemini key in Admin → Site settings', 'error'); return; }
+async function getAICtx(word, definition) {
   if (aiLoading[word]) return;
-
-  // Track AI context request
-  gaEvent('ai_context_request', { word });
-
   aiLoading[word] = true;
+
   const $btn = document.getElementById('aiBtn');
   const $sec = document.getElementById('aiSection');
   if ($btn) { $btn.disabled = true; $btn.innerHTML = '<span class="spinner"></span> Loading…'; }
 
   try {
     const prompt = `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin / Zomi) word "${word}" meaning "${definition}". Be concise and factual.`;
-    aiCache[word] = await callGemini(key, prompt);
+    aiCache[word] = await callAI(prompt);
   } catch (err) {
-    aiCache[word] = `⚠ ${err.message}`;
+    if (err.message === 'NO_KEY') {
+      aiCache[word] = '⚠ Set your OpenRouter API key in Admin → Site settings.';
+    } else {
+      aiCache[word] = `⚠ ${err.message}`;
+    }
   }
 
   aiLoading[word] = false;
