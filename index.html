@@ -11,12 +11,11 @@
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-    gtag('config', 'G-8V1ZP81ZVT', {
-      // Enable Google Signals for demographics (age, gender, interests)
+    // Use admin-saved ID if set, otherwise fall back to default
+    const _gaId = localStorage.getItem('ga_measurement_id') || 'G-8V1ZP81ZVT';
+    gtag('config', _gaId, {
       allow_google_signals: true,
-      // Enable ad personalisation signals
       allow_ad_personalization_signals: true,
-      // Send page_view automatically
       send_page_view: true,
     });
   </script>
