@@ -41,7 +41,7 @@
  */
 
 import { initializeApp, getApp, getApps }      from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getFirestore, doc, setDoc, deleteDoc,
+import { getFirestore, doc, setDoc, deleteDoc, getDoc,
          collection, onSnapshot, serverTimestamp,
          getDocs }                              from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getAuth }                              from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
@@ -162,6 +162,33 @@ export class FirestoreSync {
 
   /** Returns the current overlay map (read-only snapshot). */
   getEdits() { return this._editsByKey; }
+
+  // ── Site-wide config (settings persist across browsers/devices) ────────────
+  /**
+   * Read the global site config (GA ID, OpenRouter key, AI model).
+   * Stored in Firestore as a single document /config/site so it survives
+   * browser-data clearing and is shared across admin's devices.
+   */
+  async getConfig() {
+    try {
+      const snap = await getDoc(doc(db, 'config', 'site'));
+      return snap.exists() ? snap.data() : {};
+    } catch (err) {
+      console.warn('[FirestoreSync] getConfig failed:', err.message);
+      return {};
+    }
+  }
+
+  /** Save the global site config. Requires admin auth. */
+  async saveConfig(patch) {
+    const user = getAuth(app).currentUser;
+    if (!user) throw new Error('Must be signed in to save settings.');
+    await setDoc(doc(db, 'config', 'site'), {
+      ...patch,
+      updatedBy: user.email,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
 }
 
 export { wordKey };

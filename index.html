@@ -139,6 +139,16 @@ async function boot() {
       console.warn('[boot] Firestore overlay failed (non-fatal):', err.message);
     }
 
+    // Pull global config (GA ID, AI key) — applies admin's persistent settings
+    try {
+      const cfg = await fsync.getConfig();
+      if (cfg.gaMeasurementId) localStorage.setItem('ga_measurement_id', cfg.gaMeasurementId);
+      if (cfg.aiApiKey)        localStorage.setItem('ai_api_key',        cfg.aiApiKey);
+      if (cfg.aiModel)         localStorage.setItem('ai_model',          cfg.aiModel);
+    } catch (err) {
+      console.warn('[boot] Config load failed (non-fatal):', err.message);
+    }
+
     document.getElementById('navMeta').textContent =
       `${svc.wordCount.toLocaleString()} words · Tedim · English · မြန်မာ`;
     renderPage();

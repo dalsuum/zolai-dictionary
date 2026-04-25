@@ -295,6 +295,16 @@ async function boot() {
     console.warn('[admin] Firestore fetch failed:', err.message);
   }
 
+  // Pull config from Firestore — settings survive browser-data clearing
+  try {
+    const cfg = await fsync.getConfig();
+    if (cfg.gaMeasurementId) localStorage.setItem('ga_measurement_id', cfg.gaMeasurementId);
+    if (cfg.aiApiKey)        localStorage.setItem('ai_api_key',        cfg.aiApiKey);
+    if (cfg.aiModel)         localStorage.setItem('ai_model',          cfg.aiModel);
+  } catch (err) {
+    console.warn('[admin] Config load failed:', err.message);
+  }
+
   populatePosSelect();
 
   // Listen to auth state — renders correct screen whenever it changes
@@ -611,36 +621,51 @@ function openDeleteModal(word) {
 function closeDeleteModal() { $deleteOverlay.hidden = true; }
 
 // ── Settings save functions (exposed to window for inline onclick) ────────────
-window.saveGaId = function() {
+window.saveGaId = async function() {
   const val = document.getElementById('gaIdInput')?.value.trim();
   if (!val || !val.startsWith('G-')) {
     showToast('Invalid ID — must start with G-', 'error'); return;
   }
-  localStorage.setItem('ga_measurement_id', val);
+  try {
+    await fsync.saveConfig({ gaMeasurementId: val });
+    localStorage.setItem('ga_measurement_id', val);
 
-  // Re-initialise GA with new ID (no reload needed for tracking)
-  if (typeof gtag !== 'undefined') {
-    gtag('config', val, { send_page_view: false });
+    // Re-initialise GA with new ID immediately
+    if (typeof gtag !== 'undefined') {
+      gtag('config', val, { send_page_view: false });
+    }
+
+    const $saved = document.getElementById('gaSaved');
+    if ($saved) { $saved.classList.add('show'); setTimeout(() => $saved.classList.remove('show'), 3000); }
+    showToast('GA ID saved permanently ✓');
+  } catch (err) {
+    showToast(`Save failed: ${err.message}`, 'error');
   }
-
-  const $saved = document.getElementById('gaSaved');
-  if ($saved) { $saved.classList.add('show'); setTimeout(() => $saved.classList.remove('show'), 3000); }
-  showToast('GA Measurement ID saved ✓');
 };
 
-window.saveAIKey = function() {
+window.saveAIKey = async function() {
   const key   = document.getElementById('aiKeyInput')?.value.trim();
   const model = document.getElementById('aiModelInput')?.value.trim();
-  if (key) {
-    localStorage.setItem('ai_api_key', key);
-    if (model) localStorage.setItem('ai_model', model);
-    const $saved = document.getElementById('aiKeySaved');
-    if ($saved) { $saved.classList.add('show'); setTimeout(() => $saved.classList.remove('show'), 3000); }
-    showToast('OpenRouter key saved ✓');
-  } else {
-    localStorage.removeItem('ai_api_key');
-    localStorage.removeItem('ai_model');
-    showToast('AI key cleared');
+
+  try {
+    if (key) {
+      await fsync.saveConfig({
+        aiApiKey: key,
+        aiModel:  model || 'meta-llama/llama-3.1-8b-instruct:free',
+      });
+      localStorage.setItem('ai_api_key', key);
+      if (model) localStorage.setItem('ai_model', model);
+      const $saved = document.getElementById('aiKeySaved');
+      if ($saved) { $saved.classList.add('show'); setTimeout(() => $saved.classList.remove('show'), 3000); }
+      showToast('OpenRouter key saved permanently ✓');
+    } else {
+      await fsync.saveConfig({ aiApiKey: '', aiModel: '' });
+      localStorage.removeItem('ai_api_key');
+      localStorage.removeItem('ai_model');
+      showToast('AI key cleared');
+    }
+  } catch (err) {
+    showToast(`Save failed: ${err.message}`, 'error');
   }
 };
 
