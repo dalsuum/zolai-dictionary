@@ -46,6 +46,12 @@
     });
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Preconnect to Firebase/Firestore so background sync starts handshake early -->
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <!-- Preload the dictionary data so it starts downloading in parallel with CSS/fonts -->
+  <link rel="preload" href="db/words.json" as="fetch" type="application/json" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/main.css" />
   <style>
@@ -98,8 +104,17 @@
 
 <script type="module">
 import { DictionaryService } from './app/dictionary.js';
-import { FirestoreSync }     from './app/firestore-sync.js';
 import { debounce, sanitize, parseSense, parseExam, truncate, escapeRegex, MAX_QUERY_LENGTH } from './app/utils.js';
+
+// FirestoreSync is loaded lazily — it pulls in the Firebase SDK (~150KB)
+// which we don't want blocking initial paint on mobile / slow connections.
+let fsync = null;
+async function loadFirestoreSync() {
+  if (fsync) return fsync;
+  const { FirestoreSync } = await import('./app/firestore-sync.js');
+  fsync = new FirestoreSync();
+  return fsync;
+}
 
 // ── POS palette ──────────────────────────────────────────────────────────────
 const POS_PAL = {
@@ -117,7 +132,6 @@ const pal = id => POS_PAL[id] ?? POS_PAL[0];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const svc      = new DictionaryService();
-const fsync    = new FirestoreSync();
 let selected   = null;
 let query      = '';
 let browsePage = 0;
@@ -154,37 +168,55 @@ function gaEvent(name, params = {}) {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   try {
+    // ── Phase 1: Load core dictionary data (blocking) ─────────────────────
+    // This is the only thing the user truly needs to see the app working.
+    // IndexedDB cache makes repeat visits < 100ms; first visit is the
+    // 4.6MB words.json download.
     await svc.init((msg, pct) => setProgress(msg, pct));
 
-    // Apply Firestore overlay edits — fetch once, then subscribe for live updates
-    setProgress('Syncing edits…', 95);
-    try {
-      const edits = await fsync.fetchAll();
-      svc.applyOverlay(edits);
-    } catch (err) {
-      console.warn('[boot] Firestore overlay failed (non-fatal):', err.message);
-    }
-
-    // Pull global config (GA ID, AI key) — applies admin's persistent settings
-    try {
-      const cfg = await fsync.getConfig();
-      if (cfg.gaMeasurementId) localStorage.setItem('ga_measurement_id', cfg.gaMeasurementId);
-      if (cfg.aiApiKey)        localStorage.setItem('ai_api_key',        cfg.aiApiKey);
-      if (cfg.aiModel)         localStorage.setItem('ai_model',          cfg.aiModel);
-    } catch (err) {
-      console.warn('[boot] Config load failed (non-fatal):', err.message);
-    }
-
+    // Render the UI IMMEDIATELY — Firestore sync happens in background below
     document.getElementById('navMeta').textContent =
       `${svc.wordCount.toLocaleString()} words · Tedim · English · မြန်မာ`;
     renderPage();
 
-    // Subscribe to live updates — admin edits propagate within ~1 second
-    fsync.startListening(edits => {
-      svc.applyOverlay(edits);
-      // Refresh visible UI without losing scroll position
-      if (query.trim()) renderList();
-      if (selected)     renderDetail(selected);
+    // ── Phase 2: Background sync (non-blocking) ────────────────────────────
+    // Firebase SDK is ~150KB — defer it until AFTER the user can see the app.
+    // Use requestIdleCallback so it loads during a quiet moment, falling back
+    // to setTimeout for browsers (Safari) without that API.
+    const idle = window.requestIdleCallback || (cb => setTimeout(cb, 200));
+    idle(async () => {
+      try {
+        const fs = await loadFirestoreSync();
+
+        // Pull existing admin edits, then apply overlay + re-render visible UI
+        fs.fetchAll()
+          .then(edits => {
+            svc.applyOverlay(edits);
+            if (query.trim()) renderList();
+            if (selected)     renderDetail(selected);
+          })
+          .catch(err => console.warn('[boot] overlay fetch failed:', err.message));
+
+        // Pull global config (GA ID, AI key) — applies admin's persistent settings
+        fs.getConfig()
+          .then(cfg => {
+            if (cfg.gaMeasurementId) localStorage.setItem('ga_measurement_id', cfg.gaMeasurementId);
+            if (cfg.aiApiKey)        localStorage.setItem('ai_api_key',        cfg.aiApiKey);
+            if (cfg.aiModel)         localStorage.setItem('ai_model',          cfg.aiModel);
+            // If AI key just arrived and a word is shown, re-render to show the AI button
+            if (cfg.aiApiKey && selected) renderDetail(selected);
+          })
+          .catch(err => console.warn('[boot] config load failed:', err.message));
+
+        // Subscribe to live updates from admin sessions — propagates within ~1s
+        fs.startListening(edits => {
+          svc.applyOverlay(edits);
+          if (query.trim()) renderList();
+          if (selected)     renderDetail(selected);
+        });
+      } catch (err) {
+        console.warn('[boot] Firestore sync unavailable:', err.message);
+      }
     });
 
   } catch (err) {
