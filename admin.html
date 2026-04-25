@@ -249,6 +249,7 @@
 <script type="module">
 import { AuthService }       from './app/auth.js';
 import { DictionaryService } from './app/dictionary.js';
+import { FirestoreSync }     from './app/firestore-sync.js';
 import { sanitize, parseSense } from './app/utils.js';
 
 // ── POS palette ──────────────────────────────────────────────────────────────
@@ -266,8 +267,9 @@ const POS_PAL = {
 const pal = id => POS_PAL[id] ?? POS_PAL[0];
 
 // ── Services ─────────────────────────────────────────────────────────────────
-const auth = new AuthService();
-const svc  = new DictionaryService();
+const auth  = new AuthService();
+const svc   = new DictionaryService();
+const fsync = new FirestoreSync();
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let filterVal  = '';
@@ -284,6 +286,15 @@ const $toast        = document.getElementById('toast');
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   await svc.init();
+
+  // Apply Firestore overlay — pull in any existing edits
+  try {
+    const edits = await fsync.fetchAll();
+    svc.applyOverlay(edits);
+  } catch (err) {
+    console.warn('[admin] Firestore fetch failed:', err.message);
+  }
+
   populatePosSelect();
 
   // Listen to auth state — renders correct screen whenever it changes
@@ -291,7 +302,13 @@ async function boot() {
     updateNav(user);
     if (user) {
       renderTable();
+      // Subscribe to live updates so other admins' edits appear instantly
+      fsync.startListening(() => {
+        svc.applyOverlay(fsync.getEdits());
+        renderTable();
+      });
     } else {
+      fsync.stopListening();
       renderSignIn();
     }
   });
@@ -546,7 +563,7 @@ function openEditModal(word) {
 
 function closeEditModal() { $editOverlay.hidden = true; }
 
-function handleSave() {
+async function handleSave() {
   const word    = document.getElementById('f-word').value.trim();
   const senseEn = document.getElementById('f-sense-en').value.trim();
   const senseMy = document.getElementById('f-sense-my').value.trim();
@@ -554,31 +571,40 @@ function handleSave() {
   const exam    = document.getElementById('f-exam').value.trim();
   const notes   = document.getElementById('f-notes').value.trim();
   if (!word || !senseEn) { showToast('Zolai word and English meaning are required.', 'error'); return; }
-  const senseEnFull = notes ? `${senseEn} — ${notes}` : senseEn;
+
+  // Disable Save button to prevent double-clicks while waiting for Firestore
+  const $btn = document.getElementById('modalSaveBtn');
+  if ($btn) { $btn.disabled = true; $btn.textContent = 'Saving…'; }
+
   try {
-    if (editTarget) {
-      svc.updateWord(editTarget, { word, wrte, senseEn: senseEnFull, senseMy, exam });
-      showToast('Word updated');
-    } else {
-      svc.addWord({ word, wrte, senseEn: senseEnFull, senseMy, exam });
-      showToast('Word added');
-    }
+    // Write to Firestore — single source of truth, syncs to all visitors
+    await fsync.saveEdit(word, { wrte, senseEn, senseMy, exam, notes });
+    // The onSnapshot listener will automatically re-render the table
+    showToast(editTarget ? 'Word updated for everyone ✓' : 'Word added for everyone ✓');
     closeEditModal();
-    renderTable();
   } catch (err) {
-    showToast(err.message, 'error');
+    showToast(`Save failed: ${err.message}`, 'error');
+  } finally {
+    if ($btn) { $btn.disabled = false; $btn.textContent = editTarget ? 'Save changes' : 'Add word'; }
   }
 }
 
 // ── Delete modal ──────────────────────────────────────────────────────────────
 function openDeleteModal(word) {
   document.getElementById('deleteMsg').innerHTML =
-    `Delete <strong>"${sanitize(word)}"</strong>? This cannot be undone.`;
-  document.getElementById('deleteConfirmBtn').onclick = () => {
-    svc.deleteWord(word);
-    $deleteOverlay.hidden = true;
-    showToast('Word deleted');
-    renderTable();
+    `Delete <strong>"${sanitize(word)}"</strong>? This will hide it from all visitors.`;
+  document.getElementById('deleteConfirmBtn').onclick = async () => {
+    const $btn = document.getElementById('deleteConfirmBtn');
+    if ($btn) { $btn.disabled = true; $btn.textContent = 'Deleting…'; }
+    try {
+      await fsync.markDeleted(word);
+      $deleteOverlay.hidden = true;
+      showToast('Word hidden for everyone ✓');
+    } catch (err) {
+      showToast(`Delete failed: ${err.message}`, 'error');
+    } finally {
+      if ($btn) { $btn.disabled = false; $btn.textContent = 'Delete permanently'; }
+    }
   };
   $deleteOverlay.hidden = false;
 }

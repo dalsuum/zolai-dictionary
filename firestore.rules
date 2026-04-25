@@ -1,0 +1,35 @@
+// firestore.rules — Security rules for Zolai Dictionary
+//
+// Public dictionary at zolai-dictionary.web.app reads /edits.
+// Only authorized admin emails can create, update, or delete /edits.
+//
+// To deploy these rules:
+//   1. Open https://console.firebase.google.com → zolai-dictionary
+//   2. Build → Firestore Database → Rules tab
+//   3. Replace the default rules with this file's content
+//   4. Click "Publish"
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // /edits collection — admin overlay over base words.json
+    match /edits/{wordKey} {
+      // Anyone can read — public dictionary needs to display the corrections
+      allow read: if true;
+
+      // Only authenticated admins listed below can write
+      allow create, update, delete: if request.auth != null
+        && request.auth.token.email in [
+          'dalsuum08@gmail.com'
+          // To add more admins, append email addresses to this list
+        ];
+    }
+
+    // Default deny — no other collections are accessible
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

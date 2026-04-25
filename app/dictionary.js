@@ -127,6 +127,83 @@ export class DictionaryService {
     for (const rows of this._senseMap.values()) {
       rows.sort((a, b) => (a.wseq ?? 0) - (b.wseq ?? 0));
     }
+
+    // Re-apply overlay if present (e.g. after re-fetch)
+    if (this._overlay) this._mergeOverlay();
+  }
+
+  /**
+   * Apply Firestore overlay edits to in-memory index.
+   * @param {Map<wordKey, editData>} editsMap
+   *
+   * Each overlay row either:
+   *   - Adds a new word (not in base) → push to _words + _senseMap
+   *   - Replaces existing senses → overwrite EN/MY rows
+   *   - Marks word as deleted → remove from _words + maps
+   */
+  applyOverlay(editsMap) {
+    this._overlay = editsMap;
+    this._mergeOverlay();
+  }
+
+  _mergeOverlay() {
+    if (!this._overlay) return;
+
+    // First, snapshot the original word IDs we'll need for new senses
+    const allSenses = [...this._senseMap.values()].flat();
+    let maxSenseId  = allSenses.reduce((m, s) => Math.max(m, s.id), 0);
+    let maxWordId   = this._words.reduce((m, w) => Math.max(m, w.id), 0);
+
+    for (const [, edit] of this._overlay) {
+      const word = edit.word;
+      if (!word) continue;
+
+      if (edit.deleted) {
+        this._words = this._words.filter(w => w.word.toLowerCase() !== word.toLowerCase());
+        this._wordMap.delete(word);
+        // Also try with original casing variants
+        for (const k of [...this._wordMap.keys()]) {
+          if (k.toLowerCase() === word.toLowerCase()) this._wordMap.delete(k);
+        }
+        for (const k of [...this._senseMap.keys()]) {
+          if (k.toLowerCase() === word.toLowerCase()) this._senseMap.delete(k);
+        }
+        continue;
+      }
+
+      // Find existing word entry (case-insensitive)
+      let existing = this._wordMap.get(word) ??
+        [...this._wordMap.values()].find(w => w.word.toLowerCase() === word.toLowerCase());
+
+      if (!existing) {
+        // New word added via overlay
+        existing = { id: ++maxWordId, word, derived: 0 };
+        this._words.push(existing);
+        this._wordMap.set(word, existing);
+      }
+
+      // Build new sense rows from overlay
+      const newSenses = [];
+      if (edit.senseEn) {
+        const fullSense = edit.notes ? `${edit.senseEn} — ${edit.notes}` : edit.senseEn;
+        newSenses.push({
+          id: ++maxSenseId, word: existing.word,
+          wrte: edit.wrte ?? 0, sense: fullSense,
+          exam: edit.exam ?? '', wseq: 0,
+        });
+      }
+      if (edit.senseMy) {
+        newSenses.push({
+          id: ++maxSenseId, word: existing.word,
+          wrte: edit.wrte ?? 0, sense: edit.senseMy,
+          exam: edit.exam ?? '', wseq: 1,
+        });
+      }
+
+      if (newSenses.length) {
+        this._senseMap.set(existing.word, newSenses);
+      }
+    }
   }
 
   // ── Read ────────────────────────────────────────────────────────────────────

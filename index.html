@@ -72,6 +72,7 @@
 
 <script type="module">
 import { DictionaryService } from './app/dictionary.js';
+import { FirestoreSync }     from './app/firestore-sync.js';
 import { debounce, sanitize, parseSense, parseExam, truncate } from './app/utils.js';
 
 // ── POS palette ──────────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ const pal = id => POS_PAL[id] ?? POS_PAL[0];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const svc      = new DictionaryService();
+const fsync    = new FirestoreSync();
 let selected   = null;
 let query      = '';
 let browsePage = 0;
@@ -127,9 +129,28 @@ function gaEvent(name, params = {}) {
 async function boot() {
   try {
     await svc.init((msg, pct) => setProgress(msg, pct));
+
+    // Apply Firestore overlay edits — fetch once, then subscribe for live updates
+    setProgress('Syncing edits…', 95);
+    try {
+      const edits = await fsync.fetchAll();
+      svc.applyOverlay(edits);
+    } catch (err) {
+      console.warn('[boot] Firestore overlay failed (non-fatal):', err.message);
+    }
+
     document.getElementById('navMeta').textContent =
       `${svc.wordCount.toLocaleString()} words · Tedim · English · မြန်မာ`;
     renderPage();
+
+    // Subscribe to live updates — admin edits propagate within ~1 second
+    fsync.startListening(edits => {
+      svc.applyOverlay(edits);
+      // Refresh visible UI without losing scroll position
+      if (query.trim()) renderList();
+      if (selected)     renderDetail(selected);
+    });
+
   } catch (err) {
     showBootError(`Failed to load: ${err.message}`);
   }
