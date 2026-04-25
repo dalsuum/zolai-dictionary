@@ -8,11 +8,43 @@ export function debounce(fn, delay = 300) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
 }
 
-/** Sanitize string for safe innerHTML injection (XSS prevention). */
+/**
+ * Sanitize string for safe innerHTML injection (XSS prevention).
+ *
+ * Replaces every char that has special meaning in HTML with its entity:
+ *   & → &amp;   < → &lt;   > → &gt;   " → &quot;   ' → &#39;   / → &#x2F;   ` → &#x60;
+ *
+ * The slash and backtick aren't strictly required but defend against:
+ *   - </script> injection inside strings
+ *   - template literal escape attempts
+ *
+ * NULL-safe: returns '' for null/undefined.
+ */
 export function sanitize(str) {
-  const map = { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' };
-  return String(str ?? '').replace(/[&<>"']/g, ch => map[ch]);
+  const map = {
+    '&':'&amp;', '<':'&lt;', '>':'&gt;',
+    '"':'&quot;', "'":'&#39;',
+    '/':'&#x2F;', '`':'&#x60;',
+  };
+  return String(str ?? '').replace(/[&<>"'/`]/g, ch => map[ch]);
 }
+
+/**
+ * Escape a string for safe use inside a RegExp pattern.
+ * Without this, user input like "(test)" or "[a-z]" would be interpreted
+ * as regex syntax and could cause: (a) wrong matches, (b) regex errors,
+ * (c) catastrophic backtracking → DoS.
+ */
+export function escapeRegex(str) {
+  return String(str ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Cap user input length to prevent DoS via huge queries.
+ * Search box accepts up to 200 chars — way more than any real query needs,
+ * but prevents megabyte-scale strings from triggering expensive regex/scan.
+ */
+export const MAX_QUERY_LENGTH = 200;
 
 /** Normalise for case-insensitive search (Latin + Myanmar). */
 export function normalise(str) {

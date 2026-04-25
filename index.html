@@ -4,6 +4,32 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="Zolai (Tedim Chin / Zomi) trilingual dictionary — Zolai, English and Myanmar translations." />
+  <!-- Content Security Policy — defense-in-depth against XSS even if sanitize() ever has a gap.
+       'unsafe-inline' style is needed for our design tokens; scripts are restricted to specific CDNs. -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline'
+      https://www.gstatic.com
+      https://www.googletagmanager.com
+      https://*.googleapis.com
+      https://*.firebaseio.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src 'self' https://fonts.gstatic.com;
+    img-src 'self' data: https: blob:;
+    connect-src 'self'
+      https://*.googleapis.com
+      https://*.firebaseio.com
+      https://*.cloudfunctions.net
+      https://firestore.googleapis.com
+      https://en.wikipedia.org
+      https://upload.wikimedia.org
+      https://openrouter.ai
+      https://www.google-analytics.com
+      https://*.google-analytics.com;
+    frame-ancestors 'none';
+    base-uri 'self';
+    form-action 'none';
+  " />
   <title>Zolai Dictionary — Tedim · English · မြန်မာ</title>
   <!-- Google Analytics GA4 -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-8V1ZP81ZVT"></script>
@@ -73,7 +99,7 @@
 <script type="module">
 import { DictionaryService } from './app/dictionary.js';
 import { FirestoreSync }     from './app/firestore-sync.js';
-import { debounce, sanitize, parseSense, parseExam, truncate } from './app/utils.js';
+import { debounce, sanitize, parseSense, parseExam, truncate, escapeRegex, MAX_QUERY_LENGTH } from './app/utils.js';
 
 // ── POS palette ──────────────────────────────────────────────────────────────
 const POS_PAL = {
@@ -174,7 +200,8 @@ function renderPage() {
       <div class="search-wrap">
         <input class="search-input" id="searchInput" type="search"
                placeholder="Search Zolai, English, or Myanmar — multiple words OK"
-               value="${sanitize(query)}" autocomplete="off" aria-label="Search" />
+               value="${sanitize(query)}" autocomplete="off" aria-label="Search"
+               maxlength="200" />
         <div class="search-meta">
           <span class="muted" id="searchCount"></span>
           <div class="toggle-row">
@@ -195,11 +222,13 @@ function renderPage() {
   // Search
   document.getElementById('searchInput').addEventListener(
     'input', debounce(e => {
-      query = e.target.value; browsePage = 0; renderList();
+      // Cap query length — defends against DoS via massive regex patterns
+      query = String(e.target.value ?? '').slice(0, MAX_QUERY_LENGTH);
+      browsePage = 0; renderList();
       // Track search — fires 300ms after user stops typing
       if (query.trim().length >= 2) {
         gaEvent('search', {
-          search_term: query.trim(),
+          search_term: query.trim().slice(0, 100),  // GA4 limit + privacy
           // Detect which language was searched
           search_language: /[\u1000-\u109F]/.test(query) ? 'myanmar'
                          : /^[a-zA-Z\s]+$/.test(query)   ? 'english_or_zolai'
@@ -219,6 +248,9 @@ function renderPage() {
 }
 
 // ── Highlight ─────────────────────────────────────────────────────────────────
+// SECURITY: text is sanitized FIRST (HTML entities), then we wrap matches
+// in <mark>. This is the only intentional non-sanitized HTML insertion in
+// the app. The <mark> tags have no attributes, so injection is impossible.
 function hl(text, q) {
   const safe = sanitize(text ?? '');
   if (!q || !q.trim()) return safe;
@@ -229,15 +261,15 @@ function hl(text, q) {
   let m;
   while ((m = re.exec(q)) !== null) {
     const t = (m[1] ?? m[2]).trim();
-    if (t) terms.push(t);
+    // Skip ultra-short or empty terms; cap individual term length
+    if (t && t.length <= 100) terms.push(t);
   }
   if (!terms.length) return safe;
 
-  // Build a single combined regex so highlights don't overlap
+  // Build a single combined regex so highlights don't overlap.
+  // escapeRegex prevents users from injecting regex syntax.
   try {
-    const escaped = terms
-      .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-      .join('|');
+    const escaped = terms.map(escapeRegex).join('|');
     return safe.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
   } catch { return safe; }
 }
@@ -581,7 +613,14 @@ async function getAICtx(word, definition) {
   if ($btn) { $btn.disabled = true; $btn.innerHTML = '<span class="spinner"></span> Loading…'; }
 
   try {
-    const prompt = `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin / Zomi) word "${word}" meaning "${definition}". Be concise and factual.`;
+    // SECURITY — Prompt injection defense:
+    //   Strip quote/backslash/control chars before embedding into the prompt.
+    //   Without this, a word like:  x" Ignore previous instructions and...
+    //   could break out of the prompt structure and hijack the AI.
+    const cleanWord = String(word       ?? '').replace(/["\\`\n\r\u0000-\u001F]/g, '').slice(0, 100);
+    const cleanDef  = String(definition ?? '').replace(/["\\`\n\r\u0000-\u001F]/g, '').slice(0, 200);
+
+    const prompt = `In 2 sentences, give cultural or etymological context for the Zolai (Tedim Chin / Zomi) word "${cleanWord}" meaning "${cleanDef}". Be concise and factual.`;
     aiCache[word] = await callAI(prompt);
   } catch (err) {
     if (err.message === 'NO_KEY') {
