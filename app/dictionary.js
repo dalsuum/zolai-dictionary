@@ -145,23 +145,29 @@ export class DictionaryService {
    * Ranked search — Zolai ↔ English ↔ Myanmar (bidirectional).
    *
    * Score tiers:
-   *   100 — exact headword match             "leiba" → leiba
-   *    75 — headword starts with query       "leib"  → leiba
-   *    50 — headword contains query          "eib"   → leiba
-   *    40 — English exam (full verse) word   "debt"  → leiba  ← NEW
-   *    30 — English sense word-boundary      "song"  → La
-   *    20 — Myanmar sense contains query     "အကြ"   → leiba
-   *    15 — English exam contains anywhere   "debt"  → leiba (fallback)
-   *    10 — English sense contains anywhere
+   *   100 — exact headword match
+   *    75 — headword starts with query
+   *    50 — headword contains query
+   *    40 — English exam word-boundary match  (requires query ≥ 3 chars)
+   *    30 — English sense word-boundary match (requires query ≥ 3 chars)
+   *    20 — Myanmar sense match               (requires query ≥ 2 chars)
+   *    15 — English exam substring            (requires query ≥ 4 chars)
+   *    10 — English sense substring           (requires query ≥ 3 chars)
+   *
+   * WHY minimum lengths?
+   *   Short queries like "la" appear in thousands of Bible verse exam fields.
+   *   Without a minimum, "la" returns 2,591 results (noise from exam scanning).
+   *   Headword matching has no minimum — "La" (song) should still be found.
    */
   search(query) {
     const q    = normalise(query);
     const qRaw = (query ?? '').trim();
     if (!q) return [];
 
+    const qLen    = q.length;
     const isAscii = /^[a-z0-9 ]+$/.test(q);
     let wordBoundaryRe = null;
-    if (isAscii) {
+    if (isAscii && qLen >= 3) {
       try {
         wordBoundaryRe = new RegExp(
           `(?<![a-z])${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z])`
@@ -177,23 +183,32 @@ export class DictionaryService {
       else if (nw.startsWith(q)) { scores.set(word, 75);  continue; }
       else if (nw.includes(q))   { scores.set(word, 50);  continue; }
 
+      // Only scan sense/exam for queries ≥ 3 chars to avoid noise
+      if (qLen < 3) continue;
+
       let best = 0;
       for (const s of rows) {
         if (s.wseq === 0) {
           const ns   = normalise(s.sense);
-          const exam = normalise(s.exam ?? '');
+          const exam = qLen >= 3 ? normalise(s.exam ?? '') : '';
 
-          // Sense matching
-          if (wordBoundaryRe?.test(ns))    best = Math.max(best, 30);
-          else if (ns.includes(q))         best = Math.max(best, 10);
+          // Sense matching (≥ 3 chars)
+          if (wordBoundaryRe?.test(ns)) {
+            // Score 35 if sense STARTS with query — likely the primary definition
+            // e.g. "house / home — Primary dwelling" starts with "house" → Inn ranks first
+            const startsWithQ = ns.startsWith(q + ' ') || ns.startsWith(q + '/') || ns === q;
+            best = Math.max(best, startsWithQ ? 35 : 30);
+          } else if (ns.includes(q)) {
+            best = Math.max(best, 10);
+          }
 
-          // Exam (full verse) matching — enables English→Zolai
-          // e.g. "debt" finds leiba because exam contains "forgave him the debt"
-          if (wordBoundaryRe?.test(exam))  best = Math.max(best, 40);
-          else if (exam.includes(q))       best = Math.max(best, 15);
-
-        } else if (s.wseq === 1) {
-          // Myanmar search — both raw and normalised
+          // Exam matching — requires ≥ 5 chars to avoid common English words
+          // ("house", "water", "song" appear in hundreds of Bible verses)
+          if (qLen >= 5) {
+            if (wordBoundaryRe?.test(exam)) best = Math.max(best, 40);
+            else if (exam.includes(q))      best = Math.max(best, 15);
+          }
+        } else if (s.wseq === 1 && qLen >= 2) {
           if (s.sense.includes(qRaw) || normalise(s.sense).includes(q)) {
             best = Math.max(best, 20);
           }

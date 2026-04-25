@@ -467,15 +467,16 @@ function selectWord(word) {
 }
 
 // ── Gemini AI ────────────────────────────────────────────────────────────────
-// Model list — newest first. The cascade tries each until one succeeds.
+// Model cascade — newest/most available first.
+// WHY a cascade? Google changes model availability without notice.
+// We try each until one succeeds rather than hard-coding one model.
 const GEMINI_ENDPOINTS = [
-  { url: 'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent',          label: 'gemini-2.0-flash (v1)'        },
-  { url: 'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-lite:generateContent',     label: 'gemini-2.0-flash-lite (v1)'    },
-  { url: 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',          label: 'gemini-1.5-flash (v1)'         },
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',      label: 'gemini-2.0-flash (v1beta)'     },
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',      label: 'gemini-1.5-flash (v1beta)'     },
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent', label: 'gemini-1.5-flash-latest (v1beta)' },
-  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',            label: 'gemini-pro (v1beta)'           },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent',     label: 'gemini-2.0-flash-lite'    },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent', label: 'gemini-2.5-flash-preview' },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',   label: 'gemini-1.5-flash-latest'  },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',          label: 'gemini-1.5-flash'         },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent',       label: 'gemini-1.5-flash-8b'      },
+  { url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',                label: 'gemini-pro'               },
 ];
 
 async function callGemini(key, prompt) {
