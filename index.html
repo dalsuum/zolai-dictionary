@@ -34,16 +34,6 @@
     mark{background:#ffe08a;color:inherit;border-radius:2px;padding:0 1px}
     @media(prefers-color-scheme:dark){mark{background:#7a5c00}}
     /* settings */
-    .settings-panel{margin-top:10px;padding:10px 12px;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r);display:none}
-    .settings-panel.open{display:block}
-    .settings-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .settings-label{font-size:12px;color:var(--text-2);white-space:nowrap}
-    .settings-key-input{flex:1;min-width:0;padding:6px 10px;font-size:12px;font-family:var(--font-sans);border:1px solid var(--border-2);border-radius:var(--r);background:var(--bg);color:var(--text);outline:none}
-    .settings-key-input:focus{border-color:var(--accent)}
-    .settings-hint{font-size:11px;color:var(--text-3);margin-top:6px}
-    .settings-hint a{color:var(--accent)}
-    .gear-btn{background:none;border:none;cursor:pointer;font-size:15px;color:var(--text-3);padding:2px 6px;border-radius:var(--r);transition:color .15s}
-    .gear-btn:hover{color:var(--accent)}
     /* browse */
     .browse-nav{display:flex;align-items:center;gap:4px;margin-top:10px;flex-wrap:wrap}
     .browse-nav button{padding:3px 7px;font-size:11px;font-family:var(--font-sans);border:1px solid var(--border-2);border-radius:var(--r);background:var(--bg);color:var(--text-2);cursor:pointer}
@@ -148,7 +138,6 @@ async function boot() {
 // ── Page scaffold ─────────────────────────────────────────────────────────────
 function renderPage() {
   const prefs  = svc.getPrefs();
-  const gemKey = localStorage.getItem('gemini_api_key') || '';
   $app.innerHTML = `
     <div class="container">
       <div class="search-wrap">
@@ -163,21 +152,6 @@ function renderPage() {
               <span class="toggle-track"></span>
             </label>
             <span class="toggle-label">Images</span>
-            <button class="gear-btn" id="gearBtn" title="Settings">⚙️</button>
-          </div>
-        </div>
-        <div class="settings-panel" id="settingsPanel">
-          <div class="settings-row">
-            <span class="settings-label">🤖 Gemini API key</span>
-            <input class="settings-key-input" id="geminiKeyInput" type="password"
-                   placeholder="Paste free Gemini API key…"
-                   value="${sanitize(gemKey)}" autocomplete="off" />
-            <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px" id="saveKeyBtn">Save</button>
-            <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px" id="clearKeyBtn">Clear</button>
-          </div>
-          <div class="settings-hint">
-            Free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a>
-            — no credit card. Stored only in your browser.
           </div>
         </div>
       </div>
@@ -206,22 +180,6 @@ function renderPage() {
   // Images toggle
   document.getElementById('imgToggle').addEventListener('change', e => {
     svc.setPrefs({ showImages: e.target.checked });
-    if (selected) renderDetail(selected);
-  });
-  // Gear / settings
-  document.getElementById('gearBtn').addEventListener('click', () =>
-    document.getElementById('settingsPanel').classList.toggle('open')
-  );
-  document.getElementById('saveKeyBtn').addEventListener('click', () => {
-    const k = document.getElementById('geminiKeyInput').value.trim();
-    if (k) { localStorage.setItem('gemini_api_key', k); showToast('Gemini key saved ✓'); }
-    document.getElementById('settingsPanel').classList.remove('open');
-    if (selected) renderDetail(selected); // show AI button if key now set
-  });
-  document.getElementById('clearKeyBtn').addEventListener('click', () => {
-    localStorage.removeItem('gemini_api_key');
-    document.getElementById('geminiKeyInput').value = '';
-    showToast('Gemini key cleared');
     if (selected) renderDetail(selected);
   });
 
@@ -554,7 +512,7 @@ async function callGemini(key, prompt) {
 
 async function getGeminiCtx(word, definition) {
   const key = localStorage.getItem('gemini_api_key');
-  if (!key) { showToast('Add your Gemini key in ⚙️ Settings first', 'error'); return; }
+  if (!key) { showToast('Add your Gemini key in Admin → Site settings', 'error'); return; }
   if (aiLoading[word]) return;
 
   // Track AI context request
