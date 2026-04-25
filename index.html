@@ -512,6 +512,18 @@ async function callAI(prompt) {
   const model = localStorage.getItem('ai_model') || DEFAULT_MODEL;
   if (!key) throw new Error('NO_KEY');
 
+  const body = {
+    model,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 600,   // raised from 150 — reasoning models need more headroom
+  };
+
+  // For Tencent Hy3 reasoning models, disable reasoning to avoid burning
+  // the token budget on internal thinking that we discard anyway
+  if (model.includes('hy3') || model.includes('hunyuan')) {
+    body.reasoning = { effort: 'disabled' };
+  }
+
   const res = await fetch(OPENROUTER_URL, {
     method:  'POST',
     headers: {
@@ -520,17 +532,29 @@ async function callAI(prompt) {
       'HTTP-Referer':  'https://zolai-dictionary.web.app',
       'X-Title':       'Zolai Dictionary',
     },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 150,
-    }),
+    body: JSON.stringify(body),
   });
 
   const data = await res.json();
   if (data.error) throw new Error(data.error.message ?? 'OpenRouter error');
-  const text = data?.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error('No response from model');
+
+  // Standard OpenAI-shaped response
+  const choice = data?.choices?.[0];
+  let text = choice?.message?.content?.trim() ?? '';
+
+  // Reasoning models may put output inside reasoning_details if max_tokens
+  // ran out before the final answer was produced. Use that as fallback.
+  if (!text) {
+    const reasoning = choice?.message?.reasoning_details;
+    if (Array.isArray(reasoning) && reasoning.length) {
+      text = reasoning.map(r => r.text || r.content || '').join(' ').trim();
+    }
+  }
+
+  if (!text) {
+    const finish = choice?.finish_reason ?? 'unknown';
+    throw new Error(`Empty response (finish=${finish}). Try a different model.`);
+  }
   return text;
 }
 
