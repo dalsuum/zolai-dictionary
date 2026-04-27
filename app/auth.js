@@ -27,11 +27,16 @@ import { getAuth, signInWithPopup, signOut,
 // ── Firebase project config (public client-side, safe to commit) ─────────────
 const firebaseConfig = {
   apiKey:            'AIzaSyCbDaQbsRETHjUVzUiJnr7IBNI_lbISfv0',
-  authDomain:        'zolai-dictionary.firebaseapp.com',
-  projectId:         'zolai-dictionary',
-  storageBucket:     'zolai-dictionary.firebasestorage.app',
-  messagingSenderId: '677623846772',
-  appId:             '1:677623846772:web:4d4b2b5e354dd532263e21',
+  //authDomain:        'zolai-dictionary.firebaseapp.com',
+  //projectId:         'zolai-dictionary',
+  //storageBucket:     'zolai-dictionary.firebasestorage.app',
+  //messagingSenderId: '677623846772',
+  //appId:             '1:677623846772:web:4d4b2b5e354dd532263e21',
+  authDomain: "zolai-dictionary.web.app", 
+  projectId: "zolai-dictionary",
+  storageBucket: "zolai-dictionary.firebasestorage.app",
+  messagingSenderId: "677623846772",
+  appId: "1:677623846772:web:4d4b2b5e354dd532263e21"
 };
 
 // ── Authorized admin emails ───────────────────────────────────────────────────
