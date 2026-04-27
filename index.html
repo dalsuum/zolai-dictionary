@@ -15,7 +15,7 @@
       https://*.firebaseio.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     font-src 'self' https://fonts.gstatic.com;
-    img-src 'self' data: https: blob:;
+    img-src 'self' data: https: blob: https://*.google-analytics.com https://www.google.com;
     connect-src 'self'
       https://*.googleapis.com
       https://*.firebaseio.com
@@ -25,10 +25,12 @@
       https://upload.wikimedia.org
       https://openrouter.ai
       https://www.google-analytics.com
-      https://*.google-analytics.com;
-    frame-ancestors 'none';
+      https://*.google-analytics.com
+      https://analytics.google.com
+      https://www.google.com
+      https://www.gstatic.com;
     base-uri 'self';
-    form-action 'none';
+    form-action 'self';
   " />
   <title>Zolai Dictionary — Tedim · English · မြန်မာ</title>
   <!-- Google Analytics GA4 -->
